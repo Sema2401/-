@@ -1,5 +1,6 @@
 import pygame
 from PIL import Image
+import math
 
 def extract_gif_frames(gif_path):
     frames = []
@@ -18,9 +19,23 @@ def load_frames_as_surfaces(pil_frames):
         surfaces.append(surface)
     return surfaces
 
+def make_circular_surface(image):
+    size = image.get_size()
+    mask = pygame.Surface(size, pygame.SRCALPHA)
+    mask.fill((0, 0, 0, 0))
+    center = (size[0] // 2, size[1] // 2)
+    radius = min(size) // 2
+    pygame.draw.circle(mask, (255, 255, 255, 255), center, radius)
+    circular = pygame.Surface(size, pygame.SRCALPHA)
+    circular.blit(image, (0, 0))
+    circular.blit(mask, (0, 0), None, pygame.BLEND_RGBA_MULT)
+    return circular
+
 pygame.init()
+
 WIDTH, HEIGHT = 800, 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
+current_width, current_height = WIDTH, HEIGHT
+screen = pygame.display.set_mode((current_width, current_height), pygame.RESIZABLE)
 clock = pygame.time.Clock()
 
 WHITE = (255, 255, 255)
@@ -28,25 +43,28 @@ BLACK = (0, 0, 0)
 GRAY = (200, 200, 200)
 BLUE = (100, 150, 255)
 LIGHT_BLUE = (150, 200, 255)
+GREEN = (100, 255, 100)
+YELLOW = (255, 255, 0)
+RED = (255, 100, 100)
 
 font = pygame.font.SysFont(None, 36)
-background = pygame.image.load('cosmos.jpg').convert()
+small_font = pygame.font.SysFont(None, 24)
 
+background_original = pygame.image.load('cosmos.jpg').convert()
+background = pygame.transform.scale(background_original, (current_width, current_height))
 
 GIF_PATH = "sun.gif"
 pil_frames = extract_gif_frames(GIF_PATH)
 gif_frames = load_frames_as_surfaces(pil_frames)
+sun_original_size = gif_frames[0].get_width()
 
-SUN_SCALE_FACTOR = 0.5
+SCALE_FACTOR = 0.5
 scaled_frames = []
 for frame in gif_frames:
-    scaled_surface = pygame.transform.smoothscale(frame, (int(frame.get_width() * SUN_SCALE_FACTOR), int(frame.get_height() * SUN_SCALE_FACTOR)))
+    scaled_surface = pygame.transform.smoothscale(frame, (int(frame.get_width() * SCALE_FACTOR), int(frame.get_height() * SCALE_FACTOR)))
     scaled_frames.append(scaled_surface)
 
 button_width, button_height = 100, 50
-plus_button = pygame.Rect(WIDTH // 2 - button_width - 20, HEIGHT - 100, button_width, button_height)
-minus_button = pygame.Rect(WIDTH // 2 + 20, HEIGHT - 100, button_width, button_height)
-
 button_color = (50, 50, 50)
 hover_color = (100, 100, 100)
 
@@ -55,204 +73,98 @@ frame_delay = 100
 last_update = pygame.time.get_ticks()
 
 planet_icon = pygame.image.load('значок_планеты.jpg').convert_alpha()
-planet_icon = pygame.transform.scale(planet_icon, (50, 50))
-
+planet_icon = pygame.transform.scale(planet_icon, (67, 50))
 star_icon = pygame.image.load('значок_звезды.webp').convert_alpha()
-star_icon = pygame.transform.scale(star_icon, (50, 50))
-
+star_icon = pygame.transform.scale(star_icon, (74, 50))
 asteroid_icon = pygame.image.load('значок_астероида.webp').convert_alpha()
-asteroid_icon = pygame.transform.scale(asteroid_icon, (50, 50))
+asteroid_icon = pygame.transform.scale(asteroid_icon, (67, 50))
 
-earth_image = pygame.image.load('Земля.png').convert_alpha()
-earth_image = pygame.transform.scale(earth_image, (120, 120))
+def load_and_make_circular(path, size):
+    image = pygame.image.load(path).convert_alpha()
+    image = pygame.transform.scale(image, (size, size))
+    return make_circular_surface(image)
 
-mercury_image = pygame.image.load('Меркурий.png').convert_alpha()
-mercury_image = pygame.transform.scale(mercury_image, (80, 80))
+star_size_factors = {
+    "sirius": 2.5,
+    "canopus": 1.8,
+    "arcturus": 1.6,
+    "vega": 1.4,
+    "aldebaran": 1.5
+}
 
-venus_image = pygame.image.load('Венера.png').convert_alpha()
-venus_image = pygame.transform.scale(venus_image, (80, 80))
+celestial_objects = {
+    "earth": {"image": load_and_make_circular('Земля.png', 180), "base_size": 180, "positions": []},
+    "mercury": {"image": load_and_make_circular('Меркурий.png', 140), "base_size": 140, "positions": []},
+    "venus": {"image": load_and_make_circular('Венера.png', 140), "base_size": 140, "positions": []},
+    "mars": {"image": load_and_make_circular('Марс.png', 130), "base_size": 130, "positions": []},
+    "jupiter": {"image": load_and_make_circular('Юпитер.png', 220), "base_size": 220, "positions": []},
+    "saturn": {"image": load_and_make_circular('Сатурн.png', 260), "base_size": 260, "positions": []},
+    "uranium": {"image": load_and_make_circular('Уран.png', 240), "base_size": 240, "positions": []},
+    "neptune": {"image": load_and_make_circular('Нептун.png', 180), "base_size": 180, "positions": []},
+    "sirius": {"image": load_and_make_circular('Сириус.png', int(sun_original_size * star_size_factors["sirius"])),
+               "base_size": int(sun_original_size * star_size_factors["sirius"]), "positions": []},
+    "canopus": {"image": load_and_make_circular('Канопус.png', int(sun_original_size * star_size_factors["canopus"])),
+                "base_size": int(sun_original_size * star_size_factors["canopus"]), "positions": []},
+    "arcturus": {"image": load_and_make_circular('Арктур.png', int(sun_original_size * star_size_factors["arcturus"])),
+                 "base_size": int(sun_original_size * star_size_factors["arcturus"]), "positions": []},
+    "vega": {"image": load_and_make_circular('Вега.png', int(sun_original_size * star_size_factors["vega"])),
+             "base_size": int(sun_original_size * star_size_factors["vega"]), "positions": []},
+    "aldebaran": {"image": load_and_make_circular('Альдебаран.png', int(sun_original_size * star_size_factors["aldebaran"])),
+                  "base_size": int(sun_original_size * star_size_factors["aldebaran"]), "positions": []},
+    "psyche": {"image": load_and_make_circular('16 Психея.png', 180), "base_size": 180, "positions": []},
+    "dimorph": {"image": load_and_make_circular('Диморф.png', 180), "base_size": 180, "positions": []},
+    "bennu": {"image": load_and_make_circular('Бенну.png', 180), "base_size": 180, "positions": []},
+    "ryugu": {"image": load_and_make_circular('Рюгу.png', 180), "base_size": 180, "positions": []},
+    "ceres": {"image": load_and_make_circular('Церера.png', 180), "base_size": 180, "positions": []}
+}
 
-mars_image = pygame.image.load('Марс.png').convert_alpha()
-mars_image = pygame.transform.scale(mars_image, (70, 70))
-
-jupiter_image = pygame.image.load('Юпитер.png').convert_alpha()
-jupiter_image = pygame.transform.scale(jupiter_image, (140, 140))
-
-saturn_image = pygame.image.load('Сатурн.png').convert_alpha()
-saturn_image = pygame.transform.scale(saturn_image, (180, 180))
-
-uranium_image = pygame.image.load('Уран.png').convert_alpha()
-uranium_image = pygame.transform.scale(uranium_image, (170, 170))
-
-neptune_image = pygame.image.load('Нептун.png').convert_alpha()
-neptune_image = pygame.transform.scale(neptune_image, (100, 100))
-
-sirius_image = pygame.image.load('Сириус.png').convert_alpha()
-sirius_image = pygame.transform.scale(sirius_image, (240, 160))
-
-canopus_image = pygame.image.load('Канопус.png').convert_alpha()
-canopus_image = pygame.transform.scale(canopus_image, (100, 100))
-
-arcturus_image = pygame.image.load('Арктур.png').convert_alpha()
-arcturus_image = pygame.transform.scale(arcturus_image, (100, 120))
-
-vega_image = pygame.image.load('Вега.png').convert_alpha()
-vega_image = pygame.transform.scale(vega_image, (120, 120))
-
-aldebaran_image = pygame.image.load('Альдебаран.png').convert_alpha()
-aldebaran_image = pygame.transform.scale(aldebaran_image, (100, 120))
-
-psyche_image = pygame.image.load('16 Психея.png').convert_alpha()
-psyche_image = pygame.transform.scale(psyche_image, (100, 100))
-
-dimorph_image = pygame.image.load('Диморф.png').convert_alpha()
-dimorph_image = pygame.transform.scale(dimorph_image, (100, 100))
-
-bennu_image = pygame.image.load('Бенну.png').convert_alpha()
-bennu_image = pygame.transform.scale(bennu_image, (100, 100))
-
-ryugu_image = pygame.image.load('Рюгу.png').convert_alpha()
-ryugu_image = pygame.transform.scale(ryugu_image, (100, 100))
-
-ceres_image = pygame.image.load('Церера.png').convert_alpha()
-ceres_image = pygame.transform.scale(ceres_image, (100, 100))
-
-selected_image = None
-
-earth_positions = []
-mercury_positions = []
-venus_positions = []
-mars_positions = []
-jupiter_positions = []
-saturn_positions = []
-uranium_positions = []
-neptune_positions = []
-
-sirius_positions = []
-canopus_positions = []
-arcturus_positions = []
-vega_positions = []
-aldebaran_positions = []
-
-psyche_positions = []
-dimorph_positions = []
-bennu_positions = []
-ryugu_positions = []
-ceres_positions = []
-
-
+selected_object = None
 current_menu = "main"
 menus = {}
 
-def exit_app():
-    pygame.quit()
-    quit()
+input_active = False
+input_text = ""
+mass_prompt = "Введите массу объекта (в массах Земли):"
+pending_object = None
 
-def select_earth():
-    global selected_image
-    selected_image = earth_image
-
-def select_mercury():
-    global selected_image
-    selected_image = mercury_image
-
-def select_venus():
-    global selected_image
-    selected_image = venus_image
-
-def select_mars():
-    global selected_image
-    selected_image = mars_image
-
-def select_jupiter():
-    global selected_image
-    selected_image = jupiter_image
-
-def select_saturn():
-    global selected_image
-    selected_image = saturn_image
-
-def select_uranium():
-    global selected_image
-    selected_image = uranium_image
-
-def select_neptune():
-    global selected_image
-    selected_image = neptune_image
-
-def select_sirius():
-    global selected_image
-    selected_image = sirius_image
-
-def select_canopus():
-    global selected_image
-    selected_image = canopus_image
-
-def select_arcturus():
-    global selected_image
-    selected_image = arcturus_image
-
-def select_vega():
-    global selected_image
-    selected_image = vega_image
-
-def select_aldebaran():
-    global selected_image
-    selected_image = aldebaran_image
-
-def select_psyche():
-    global selected_image
-    selected_image = psyche_image
-
-def select_dimorph():
-    global selected_image
-    selected_image = dimorph_image
-
-def select_bennu():
-    global selected_image
-    selected_image = bennu_image
-
-def select_ryugu():
-    global selected_image
-    selected_image = ryugu_image
-
-def select_ceres():
-    global selected_image
-    selected_image = ceres_image
+def select_object(obj_name):
+    global input_active, pending_object
+    pending_object = obj_name
+    input_active = True
 
 def create_menus():
     global menus
     menus["main"] = [
-        {"text": "Планеты", "submenu": "planets", "rect": pygame.Rect(10, 10, 60, 30), "icon": planet_icon},
-        {"text": "Звезды", "submenu": "stars", "rect": pygame.Rect(70, 10, 60, 30), "icon": star_icon},
-        {"text": "Астероид", "submenu": "asteroid", "rect": pygame.Rect(130, 10, 60, 30), "icon": asteroid_icon},
+        {"text": "Планеты", "submenu": "planets", "icon": planet_icon},
+        {"text": "Звезды", "submenu": "stars", "icon": star_icon},
+        {"text": "Астероид", "submenu": "asteroid", "icon": asteroid_icon},
     ]
 
     menus["planets"] = [
-        {"text": "Меркурий", "action": select_mercury},
-        {"text": "Венера", "action": select_venus},
-        {"text": "Земля", "action": select_earth},
-        {"text": "Марс", "action": select_mars},
-        {"text": "Юпитер", "action": select_jupiter},
-        {"text": "Сатурн", "action": select_saturn},
-        {"text": "Уран", "action": select_uranium},
-        {"text": "Нептун", "action": select_neptune},
+        {"text": "Меркурий", "action": lambda: select_object("mercury")},
+        {"text": "Венера", "action": lambda: select_object("venus")},
+        {"text": "Земля", "action": lambda: select_object("earth")},
+        {"text": "Марс", "action": lambda: select_object("mars")},
+        {"text": "Юпитер", "action": lambda: select_object("jupiter")},
+        {"text": "Сатурн", "action": lambda: select_object("saturn")},
+        {"text": "Уран", "action": lambda: select_object("uranium")},
+        {"text": "Нептун", "action": lambda: select_object("neptune")},
     ]
 
     menus["stars"] = [
-        {"text": "Сириус", "action": select_sirius},
-        {"text": "Канопус", "action": select_canopus},
-        {"text": "Арктур", "action": select_arcturus},
-        {"text": "Вега", "action": select_vega},
-        {"text": "Альдебаран", "action": select_aldebaran},
+        {"text": "Сириус", "action": lambda: select_object("sirius")},
+        {"text": "Канопус", "action": lambda: select_object("canopus")},
+        {"text": "Арктур", "action": lambda: select_object("arcturus")},
+        {"text": "Вега", "action": lambda: select_object("vega")},
+        {"text": "Альдебаран", "action": lambda: select_object("aldebaran")},
     ]
 
     menus["asteroid"] = [
-        {"text": "16 Психея", "action": select_psyche},
-        {"text": "Диморф", "action": select_dimorph},
-        {"text": "Бенну", "action": select_bennu},
-        {"text": "Рюгу", "action": select_ryugu},
-        {"text": "Церера", "action": select_ceres},
+        {"text": "16 Психея", "action": lambda: select_object("psyche")},
+        {"text": "Диморф", "action": lambda: select_object("dimorph")},
+        {"text": "Бенну", "action": lambda: select_object("bennu")},
+        {"text": "Рюгу", "action": lambda: select_object("ryugu")},
+        {"text": "Церера", "action": lambda: select_object("ceres")},
     ]
 
 create_menus()
@@ -260,11 +172,9 @@ create_menus()
 def draw_text_or_icon(item, rect, hover=False):
     if "icon" in item:
         icon_surf = item["icon"]
-
         if icon_surf == star_icon:
             bg_rect = rect.inflate(25, 20)
             pygame.draw.rect(screen, WHITE, bg_rect, border_radius=8)
-
         icon_rect = icon_surf.get_rect(center=rect.center)
         screen.blit(icon_surf, icon_rect)
     else:
@@ -288,329 +198,252 @@ def handle_menu_click(pos):
     if current_menu != "main":
         current_menu = "main"
 
+def place_object_with_mass(pos, obj_name, mass):
+    try:
+        mass_value = float(mass)
+        mass_value = max(0.1, min(mass_value, 100))
+        size_multiplier = 0.8 + (mass_value ** 0.5) / 8
+        obj_data = celestial_objects[obj_name]
+        base_size = obj_data["base_size"]
+        new_size = int(base_size * size_multiplier * SCALE_FACTOR)
+        original_image = obj_data["image"]
+        scaled_image = pygame.transform.smoothscale(original_image, (new_size, new_size))
+        if scaled_image.get_width() != scaled_image.get_height():
+            size = max(scaled_image.get_width(), scaled_image.get_height())
+            square_surface = pygame.Surface((size, size), pygame.SRCALPHA)
+            square_surface.fill((0, 0, 0, 0))
+            x_offset = (size - scaled_image.get_width()) // 2
+            y_offset = (size - scaled_image.get_height()) // 2
+            square_surface.blit(scaled_image, (x_offset, y_offset))
+            scaled_image = make_circular_surface(square_surface)
+        else:
+            scaled_image = make_circular_surface(scaled_image)
+
+        obj_data["positions"].append({
+            "pos": pos,
+            "image": scaled_image,
+            "mass": mass_value,
+            "original_size": base_size,
+            "size_multiplier": size_multiplier
+        })
+    except ValueError:
+        print("Некорректное значение массы")
+
+def delete_object_at_pos(pos):
+    for obj_name, obj_data in celestial_objects.items():
+        for i, placed_obj in enumerate(obj_data["positions"]):
+            obj_rect = placed_obj["image"].get_rect(center=placed_obj["pos"])
+            if obj_rect.collidepoint(pos):
+                obj_data["positions"].pop(i)
+                return True
+    return False
+
+def scale_all_objects(factor):
+    global SCALE_FACTOR, scaled_frames, gif_frames
+    SCALE_FACTOR *= factor
+    SCALE_FACTOR = max(0.2, min(SCALE_FACTOR, 2.0))
+    scaled_frames = []
+    for frame in gif_frames:
+        scaled_surface = pygame.transform.smoothscale(
+            frame,
+            (int(frame.get_width() * SCALE_FACTOR), int(frame.get_height() * SCALE_FACTOR)),
+        )
+        scaled_frames.append(scaled_surface)
+    for obj_name, obj_data in celestial_objects.items():
+        for placed_obj in obj_data["positions"]:
+            new_size = int(placed_obj["original_size"] * placed_obj["size_multiplier"] * SCALE_FACTOR)
+            original_image = obj_data["image"]
+            scaled_image = pygame.transform.smoothscale(original_image, (new_size, new_size))
+            if scaled_image.get_width() != scaled_image.get_height():
+                size = max(scaled_image.get_width(), scaled_image.get_height())
+                square_surface = pygame.Surface((size, size), pygame.SRCALPHA)
+                square_surface.fill((0, 0, 0, 0))
+                x_offset = (size - scaled_image.get_width()) // 2
+                y_offset = (size - scaled_image.get_height()) // 2
+                square_surface.blit(scaled_image, (x_offset, y_offset))
+                placed_obj["image"] = make_circular_surface(square_surface)
+            else:
+                placed_obj["image"] = make_circular_surface(scaled_image)
+
 running = True
 while running:
-    screen.fill(BLACK)
     screen.blit(background, (0, 0))
     mouse_pos = pygame.mouse.get_pos()
-    mouse_pressed = pygame.mouse.get_pressed()
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+
+        elif event.type == pygame.VIDEORESIZE:
+            current_width, current_height = event.w, event.h
+            screen = pygame.display.set_mode((current_width, current_height), pygame.RESIZABLE)
+            background = pygame.transform.scale(background_original, (current_width, current_height))
+
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                running = False
+            if input_active:
+                if event.key == pygame.K_RETURN:
+                    input_active = False
+                elif event.key == pygame.K_BACKSPACE:
+                    input_text = input_text[:-1]
+                else:
+                    if event.unicode.isdigit() or event.unicode == '.':
+                        input_text += event.unicode
+
+        elif event.type == pygame.MOUSEBUTTONDOWN:
             pos = event.pos
+            plus_rect = pygame.Rect(current_width // 2 - button_width - 20, current_height - 80, button_width, button_height)
+            minus_rect = pygame.Rect(current_width // 2 + 20, current_height - 80, button_width, button_height)
 
-            if plus_button.collidepoint(pos):
-                SUN_SCALE_FACTOR += 0.1
-                scaled_frames = []
-                for frame in gif_frames:
-                    scaled_surface = pygame.transform.smoothscale(
-                        frame,
-                        (
-                            int(frame.get_width() * SUN_SCALE_FACTOR),
-                            int(frame.get_height() * SUN_SCALE_FACTOR),
-                        ),
-                    )
-                    scaled_frames.append(scaled_surface)
-            elif minus_button.collidepoint(pos):
-                SUN_SCALE_FACTOR -= 0.1
-                scaled_frames = []
-                for frame in gif_frames:
-                    scaled_surface = pygame.transform.smoothscale(
-                        frame,
-                        (
-                            int(frame.get_width() * SUN_SCALE_FACTOR),
-                            int(frame.get_height() * SUN_SCALE_FACTOR),
-                        ),
-                    )
-                    scaled_frames.append(scaled_surface)
-
-            clicked_on_menu = False
-            for item in menus["main"]:
-                if item["rect"].collidepoint(pos):
-                    clicked_on_menu = True
-                    break
-
-            if not clicked_on_menu and current_menu != "main":
-                for item in menus[current_menu]:
-                    r = item.get("rect")
-                    if r is not None and r.collidepoint(pos):
+            if event.button == 1:
+                if plus_rect.collidepoint(pos):
+                    scale_all_objects(1.1)
+                    continue
+                elif minus_rect.collidepoint(pos):
+                    scale_all_objects(0.9)
+                    continue
+                menu_y = 10
+                menu_width = 60
+                menu_height = 30
+                main_rects = [
+                    pygame.Rect(10, menu_y, menu_width, menu_height),
+                    pygame.Rect(10 + menu_width + 10, menu_y, menu_width, menu_height),
+                    pygame.Rect(10 + 2*(menu_width + 10), menu_y, menu_width, menu_height)
+                ]
+                clicked_on_menu = False
+                for i, item in enumerate(menus["main"]):
+                    item["rect"] = main_rects[i]
+                    if item["rect"].collidepoint(pos):
                         clicked_on_menu = True
                         break
-            handle_menu_click(pos)
 
-            if (
-                selected_image == earth_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                earth_positions.append(pos)
+                if not clicked_on_menu and current_menu != "main":
+                    y_offset = 40
+                    menu_item_height = 30
+                    for item in menus[current_menu]:
+                        item["rect"] = pygame.Rect(10, y_offset, 190, menu_item_height)
+                        if item["rect"].collidepoint(pos):
+                            clicked_on_menu = True
+                            break
+                        y_offset += menu_item_height + 5
 
-            if (
-                selected_image == mercury_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                mercury_positions.append(pos)
+                handle_menu_click(pos)
+                if not clicked_on_menu and not input_active and pending_object and pos[1] > 80:
+                    if input_text:
+                        place_object_with_mass(pos, pending_object, input_text)
+                    pending_object = None
+                    input_text = ""
 
-            if (
-                selected_image == venus_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                venus_positions.append(pos)
+            elif event.button == 3:
+                clicked_on_ui = False
+                if plus_rect.collidepoint(pos) or minus_rect.collidepoint(pos):
+                    clicked_on_ui = True
 
-            if (
-                selected_image == mars_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                mars_positions.append(pos)
+                menu_y = 10
+                menu_width = 60
+                menu_height = 30
+                main_rects = [
+                    pygame.Rect(10, menu_y, menu_width, menu_height),
+                    pygame.Rect(10 + menu_width + 10, menu_y, menu_width, menu_height),
+                    pygame.Rect(10 + 2*(menu_width + 10), menu_y, menu_width, menu_height)
+                ]
+                for i, item in enumerate(menus["main"]):
+                    item["rect"] = main_rects[i]
+                    if item["rect"].collidepoint(pos):
+                        clicked_on_ui = True
+                        break
 
-            if (
-                selected_image == jupiter_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                jupiter_positions.append(pos)
+                if not clicked_on_ui and current_menu != "main":
+                    y_offset = 40
+                    menu_item_height = 30
+                    for item in menus[current_menu]:
+                        item["rect"] = pygame.Rect(10, y_offset, 190, menu_item_height)
+                        if item["rect"].collidepoint(pos):
+                            clicked_on_ui = True
+                            break
+                        y_offset += menu_item_height + 5
 
-            if (
-                selected_image == saturn_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                saturn_positions.append(pos)
-
-            if (
-                selected_image == uranium_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                uranium_positions.append(pos)
-
-            if (
-                selected_image == neptune_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                neptune_positions.append(pos)
-
-            if (
-                selected_image == sirius_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                sirius_positions.append(pos)
-
-            if (
-                selected_image == canopus_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                canopus_positions.append(pos)
-
-            if (
-                selected_image == arcturus_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                arcturus_positions.append(pos)
-
-            if (
-                selected_image == vega_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                vega_positions.append(pos)
-
-            if (
-                selected_image == aldebaran_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                aldebaran_positions.append(pos)
-
-            if (
-                selected_image == psyche_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                psyche_positions.append(pos)
-
-            if (
-                selected_image == dimorph_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                dimorph_positions.append(pos)
-
-            if (
-                selected_image == bennu_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                bennu_positions.append(pos)
-
-            if (
-                selected_image == ryugu_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                ryugu_positions.append(pos)
-
-            if (
-                selected_image == ceres_image
-                and pos[1] > 80
-                and not clicked_on_menu
-                and not plus_button.collidepoint(pos)
-                and not minus_button.collidepoint(pos)
-            ):
-                ceres_positions.append(pos)
-
-    for item in menus["main"]:
+                if not clicked_on_ui and pos[1] > 80:
+                    if delete_object_at_pos(pos):
+                        print("Объект удален")
+    menu_y = 10
+    menu_width = 60
+    menu_height = 30
+    main_rects = [
+        pygame.Rect(10, menu_y, menu_width, menu_height),
+        pygame.Rect(10 + menu_width + 10, menu_y, menu_width, menu_height),
+        pygame.Rect(10 + 2*(menu_width + 10), menu_y, menu_width, menu_height)
+    ]
+    for i, item in enumerate(menus["main"]):
+        item["rect"] = main_rects[i]
         hover = item["rect"].collidepoint(mouse_pos)
         draw_text_or_icon(item, item["rect"], hover)
-
     if current_menu != "main":
         y_offset = 40
+        menu_item_height = 30
         for item in menus[current_menu]:
-            if item.get("type") == "separator":
-                pygame.draw.line(screen, GRAY, (10, y_offset + 5), (200, y_offset + 5), 1)
-                y_offset += 15
-                continue
-
-            menu_item_rect = pygame.Rect(10, y_offset, 190, 30)
-            item["rect"] = menu_item_rect
-            hover = menu_item_rect.collidepoint(mouse_pos)
-            draw_text_or_icon(item, menu_item_rect, hover)
-            y_offset += 30
-
-    for pos in earth_positions:
-        img_rect = earth_image.get_rect(center=pos)
-        screen.blit(earth_image, img_rect)
-
-    for pos in mercury_positions:
-        img_rect = mercury_image.get_rect(center=pos)
-        screen.blit(mercury_image, img_rect)
-
-    for pos in venus_positions:
-        img_rect = venus_image.get_rect(center=pos)
-        screen.blit(venus_image, img_rect)
-
-    for pos in mars_positions:
-        img_rect = mars_image.get_rect(center=pos)
-        screen.blit(mars_image, img_rect)
-
-    for pos in jupiter_positions:
-        img_rect = jupiter_image.get_rect(center=pos)
-        screen.blit(jupiter_image, img_rect)
-
-    for pos in saturn_positions:
-        img_rect = saturn_image.get_rect(center=pos)
-        screen.blit(saturn_image, img_rect)
-
-    for pos in uranium_positions:
-        img_rect = uranium_image.get_rect(center=pos)
-        screen.blit(uranium_image, img_rect)
-
-    for pos in neptune_positions:
-        img_rect = neptune_image.get_rect(center=pos)
-        screen.blit(neptune_image, img_rect)
-
-    for pos in sirius_positions:
-        img_rect = sirius_image.get_rect(center=pos)
-        screen.blit(sirius_image, img_rect)
-
-    for pos in canopus_positions:
-        img_rect = canopus_image.get_rect(center=pos)
-        screen.blit(canopus_image, img_rect)
-
-    for pos in arcturus_positions:
-        img_rect = arcturus_image.get_rect(center=pos)
-        screen.blit(arcturus_image, img_rect)
-
-    for pos in vega_positions:
-        img_rect = vega_image.get_rect(center=pos)
-        screen.blit(vega_image, img_rect)
-
-    for pos in aldebaran_positions:
-        img_rect = aldebaran_image.get_rect(center=pos)
-        screen.blit(aldebaran_image, img_rect)
-
-    for pos in psyche_positions:
-        img_rect = psyche_image.get_rect(center=pos)
-        screen.blit(psyche_image, img_rect)
-
-    for pos in dimorph_positions:
-        img_rect = dimorph_image.get_rect(center=pos)
-        screen.blit(dimorph_image, img_rect)
-
-    for pos in bennu_positions:
-        img_rect = bennu_image.get_rect(center=pos)
-        screen.blit(bennu_image, img_rect)
-
-    for pos in ryugu_positions:
-        img_rect = ryugu_image.get_rect(center=pos)
-        screen.blit(ryugu_image, img_rect)
-
-    for pos in ceres_positions:
-        img_rect = ceres_image.get_rect(center=pos)
-        screen.blit(ceres_image, img_rect)
-
+            item["rect"] = pygame.Rect(10, y_offset, 190, menu_item_height)
+            hover = item["rect"].collidepoint(mouse_pos)
+            draw_text_or_icon(item, item["rect"], hover)
+            y_offset += menu_item_height + 5
+    for obj_name, obj_data in celestial_objects.items():
+        for placed_obj in obj_data["positions"]:
+            img_rect = placed_obj["image"].get_rect(center=placed_obj["pos"])
+            screen.blit(placed_obj["image"], img_rect)
     now = pygame.time.get_ticks()
     if now - last_update > frame_delay:
         current_frame = (current_frame + 1) % len(scaled_frames)
         last_update = now
-
     frame = scaled_frames[current_frame]
-    x = (screen.get_width() - frame.get_width()) // 2
-    y = (screen.get_height() - frame.get_height()) // 2
+    x = (current_width - frame.get_width()) // 2
+    y = (current_height - frame.get_height()) // 2
     screen.blit(frame, (x, y))
 
-    def draw_button(rectangle, label):
-        color = hover_color if rectangle.collidepoint(pygame.mouse.get_pos()) else button_color
-        pygame.draw.rect(screen, color, rectangle)
-        text = font.render(label, True, WHITE)
-        text_rect = text.get_rect(center=rectangle.center)
-        screen.blit(text, text_rect)
+    if input_active:
+        s = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
+        s.fill((0, 0, 0, 180))
+        screen.blit(s, (0, 0))
+        mass_input_rect = pygame.Rect(current_width // 2 - 150, current_height // 2 - 50, 300, 50)
+        pygame.draw.rect(screen, WHITE, mass_input_rect, border_radius=10)
+        pygame.draw.rect(screen, BLACK, mass_input_rect, 2, border_radius=10)
+        prompt_surf = font.render(mass_prompt, True, YELLOW)
+        prompt_rect = prompt_surf.get_rect(center=(current_width // 2, current_height // 2 - 80))
+        prompt_shadow = font.render(mass_prompt, True, BLACK)
+        shadow_rect = prompt_rect.copy()
+        shadow_rect.x += 2
+        shadow_rect.y += 2
+        screen.blit(prompt_shadow, shadow_rect)
+        screen.blit(prompt_surf, prompt_rect)
 
-    draw_button(plus_button, "+")
-    draw_button(minus_button, "-")
+        text_surf = font.render(input_text, True, BLACK)
+        text_rect = text_surf.get_rect(center=mass_input_rect.center)
+        screen.blit(text_surf, text_rect)
+        inst_surf = small_font.render("Нажмите Enter для подтверждения", True, YELLOW)
+        inst_rect = inst_surf.get_rect(center=(current_width // 2, current_height // 2 + 30))
+        inst_shadow = small_font.render("Нажмите Enter для подтверждения", True, BLACK)
+        shadow_rect = inst_rect.copy()
+        shadow_rect.x += 1
+        shadow_rect.y += 1
+        screen.blit(inst_shadow, shadow_rect)
+        screen.blit(inst_surf, inst_rect)
+
+    def draw_button(rect, label, tooltip=""):
+        color = hover_color if rect.collidepoint(mouse_pos) else button_color
+        pygame.draw.rect(screen, color, rect, border_radius=5)
+        text = font.render(label, True, WHITE)
+        text_rect = text.get_rect(center=rect.center)
+        screen.blit(text, text_rect)
+        if tooltip and rect.collidepoint(mouse_pos):
+            tooltip_surf = small_font.render(tooltip, True, WHITE)
+            tooltip_rect = tooltip_surf.get_rect(midbottom=(rect.centerx, rect.top - 5))
+            pygame.draw.rect(screen, BLACK, tooltip_rect.inflate(10, 5), border_radius=3)
+            screen.blit(tooltip_surf, tooltip_rect)
+
+    plus_rect = pygame.Rect(current_width // 2 - button_width - 20, current_height - 80, button_width, button_height)
+    minus_rect = pygame.Rect(current_width // 2 + 20, current_height - 80, button_width, button_height)
+    draw_button(plus_rect, "+")
+    draw_button(minus_rect, "-")
 
     pygame.display.flip()
     clock.tick(60)
