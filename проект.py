@@ -1,6 +1,7 @@
 import pygame
 from PIL import Image
 import math
+import random
 
 def extract_gif_frames(gif_path):
     frames = []
@@ -92,6 +93,8 @@ star_size_factors = {
     "aldebaran": 1.5
 }
 
+stars_names = set(star_size_factors.keys())
+
 celestial_objects = {
     "earth": {"image": load_and_make_circular('Земля.png', 180), "base_size": 180, "positions": []},
     "mercury": {"image": load_and_make_circular('Меркурий.png', 140), "base_size": 140, "positions": []},
@@ -122,15 +125,25 @@ selected_object = None
 current_menu = "main"
 menus = {}
 
-input_active = False
+input_mode = 0
 input_text = ""
 mass_prompt = "Введите массу объекта (в массах Земли):"
+velocity_prompt = "Введите скорость (vx vy в пикселях/сек):"
+current_prompt = mass_prompt
 pending_object = None
+pending_mass = None
+pending_vx = pending_vy = 0.0
+
 
 def select_object(obj_name):
-    global input_active, pending_object
+    global input_mode, pending_object, current_prompt, input_text
     pending_object = obj_name
-    input_active = True
+    input_mode = 1
+    input_text = ""
+    if obj_name in stars_names:
+        current_prompt = "Введите массу объекта (в массах Солнца):"
+    else:
+        current_prompt = mass_prompt
 
 def create_menus():
     global menus
@@ -198,11 +211,15 @@ def handle_menu_click(pos):
     if current_menu != "main":
         current_menu = "main"
 
-def place_object_with_mass(pos, obj_name, mass):
+def place_object_with_mass_and_velocity(pos, obj_name, mass, vx, vy):
     try:
         mass_value = float(mass)
         mass_value = max(0.1, min(mass_value, 100))
-        size_multiplier = 0.8 + (mass_value ** 0.5) / 8
+        if obj_name in stars_names:
+            size_multiplier = 1.0 + (mass_value ** 0.5) * 0.5
+        else:
+            size_multiplier = 0.8 + (mass_value ** 0.5) / 8
+
         obj_data = celestial_objects[obj_name]
         base_size = obj_data["base_size"]
         new_size = int(base_size * size_multiplier * SCALE_FACTOR)
@@ -220,14 +237,18 @@ def place_object_with_mass(pos, obj_name, mass):
             scaled_image = make_circular_surface(scaled_image)
 
         obj_data["positions"].append({
-            "pos": pos,
+            "pos": [pos[0], pos[1]],
             "image": scaled_image,
             "mass": mass_value,
             "original_size": base_size,
-            "size_multiplier": size_multiplier
+            "size_multiplier": size_multiplier,
+            "vx": vx,
+            "vy": vy
         })
+        return True
     except ValueError:
         print("Некорректное значение массы")
+        return False
 
 def delete_object_at_pos(pos):
     for obj_name, obj_data in celestial_objects.items():
@@ -265,8 +286,13 @@ def scale_all_objects(factor):
             else:
                 placed_obj["image"] = make_circular_surface(scaled_image)
 
+G = 0.5
+SOFTENING = 100.0
+SUN_MASS = 10000
+
 running = True
 while running:
+    dt = clock.get_time() / 1000.0
     screen.blit(background, (0, 0))
     mouse_pos = pygame.mouse.get_pos()
 
@@ -281,14 +307,43 @@ while running:
 
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                running = False
-            if input_active:
+                if input_mode != 0:
+                    input_mode = 0
+                    pending_object = None
+                    input_text = ""
+                else:
+                    running = False
+
+            if input_mode == 1 or input_mode == 2:
                 if event.key == pygame.K_RETURN:
-                    input_active = False
+                    if input_mode == 1:
+                        try:
+                            mass_val = float(input_text)
+                            mass_val = max(0.1, min(mass_val, 100))
+                            pending_mass = mass_val
+                            input_mode = 2
+                            input_text = ""
+                            current_prompt = velocity_prompt
+                        except ValueError:
+                            input_text = ""
+                    elif input_mode == 2:
+                        parts = input_text.strip().split()
+                        if len(parts) == 2:
+                            try:
+                                vx = float(parts[0])
+                                vy = float(parts[1])
+                                pending_vx = max(-500, min(500, vx))
+                                pending_vy = max(-500, min(500, vy))
+                                input_mode = 0
+                                input_text = ""
+                            except ValueError:
+                                input_text = ""
+                        else:
+                            input_text = ""
                 elif event.key == pygame.K_BACKSPACE:
                     input_text = input_text[:-1]
                 else:
-                    if event.unicode.isdigit() or event.unicode == '.':
+                    if event.unicode.isdigit() or event.unicode == '.' or event.unicode == ' ' or event.unicode == '-':
                         input_text += event.unicode
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
@@ -303,6 +358,7 @@ while running:
                 elif minus_rect.collidepoint(pos):
                     scale_all_objects(0.9)
                     continue
+
                 menu_y = 10
                 menu_width = 60
                 menu_height = 30
@@ -329,11 +385,12 @@ while running:
                         y_offset += menu_item_height + 5
 
                 handle_menu_click(pos)
-                if not clicked_on_menu and not input_active and pending_object and pos[1] > 80:
-                    if input_text:
-                        place_object_with_mass(pos, pending_object, input_text)
-                    pending_object = None
-                    input_text = ""
+
+                if not clicked_on_menu and not (plus_rect.collidepoint(pos) or minus_rect.collidepoint(pos)) and input_mode == 0 and pending_object is not None and pos[1] > 80:
+                    if place_object_with_mass_and_velocity(pos, pending_object, pending_mass, pending_vx, pending_vy):
+                        pending_object = None
+                        pending_mass = None
+                        pending_vx = pending_vy = 0.0
 
             elif event.button == 3:
                 clicked_on_ui = False
@@ -367,6 +424,7 @@ while running:
                 if not clicked_on_ui and pos[1] > 80:
                     if delete_object_at_pos(pos):
                         print("Объект удален")
+
     menu_y = 10
     menu_width = 60
     menu_height = 30
@@ -379,6 +437,7 @@ while running:
         item["rect"] = main_rects[i]
         hover = item["rect"].collidepoint(mouse_pos)
         draw_text_or_icon(item, item["rect"], hover)
+
     if current_menu != "main":
         y_offset = 40
         menu_item_height = 30
@@ -387,10 +446,69 @@ while running:
             hover = item["rect"].collidepoint(mouse_pos)
             draw_text_or_icon(item, item["rect"], hover)
             y_offset += menu_item_height + 5
+
+    total_objects = sum(len(obj_data["positions"]) for obj_data in celestial_objects.values())
+    if total_objects >= 2:
+        bodies = []
+        sun_pos = [current_width // 2, current_height // 2]
+        bodies.append({"pos": sun_pos, "mass": SUN_MASS, "vx": 0, "vy": 0, "is_sun": True})
+
+        for obj_name, obj_data in celestial_objects.items():
+            for placed_obj in obj_data["positions"]:
+                bodies.append({
+                    "pos": placed_obj["pos"],
+                    "mass": placed_obj["mass"] * 10,
+                    "vx": placed_obj.get("vx", 0),
+                    "vy": placed_obj.get("vy", 0),
+                    "obj_ref": placed_obj
+                })
+
+        for i, body in enumerate(bodies):
+            if body.get("is_sun"):
+                continue
+            ax, ay = 0.0, 0.0
+            for j, other in enumerate(bodies):
+                if i == j:
+                    continue
+                dx = other["pos"][0] - body["pos"][0]
+                dy = other["pos"][1] - body["pos"][1]
+                dist_sq = dx*dx + dy*dy + SOFTENING
+                dist = math.sqrt(dist_sq)
+                force = G * other["mass"] / dist_sq
+                ax += force * dx / dist
+                ay += force * dy / dist
+            body["vx"] += ax * dt
+            body["vy"] += ay * dt
+
+        for body in bodies:
+            if body.get("is_sun"):
+                continue
+            body["pos"][0] += body["vx"] * dt
+            body["pos"][1] += body["vy"] * dt
+
+            if body["pos"][0] < 0:
+                body["pos"][0] = 0
+                body["vx"] *= -0.8
+            elif body["pos"][0] > current_width:
+                body["pos"][0] = current_width
+                body["vx"] *= -0.8
+            if body["pos"][1] < 0:
+                body["pos"][1] = 0
+                body["vy"] *= -0.8
+            elif body["pos"][1] > current_height:
+                body["pos"][1] = current_height
+                body["vy"] *= -0.8
+
+        for body in bodies:
+            if "obj_ref" in body:
+                body["obj_ref"]["vx"] = body["vx"]
+                body["obj_ref"]["vy"] = body["vy"]
+
     for obj_name, obj_data in celestial_objects.items():
         for placed_obj in obj_data["positions"]:
             img_rect = placed_obj["image"].get_rect(center=placed_obj["pos"])
             screen.blit(placed_obj["image"], img_rect)
+
     now = pygame.time.get_ticks()
     if now - last_update > frame_delay:
         current_frame = (current_frame + 1) % len(scaled_frames)
@@ -400,16 +518,16 @@ while running:
     y = (current_height - frame.get_height()) // 2
     screen.blit(frame, (x, y))
 
-    if input_active:
+    if input_mode != 0:
         s = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
         s.fill((0, 0, 0, 180))
         screen.blit(s, (0, 0))
-        mass_input_rect = pygame.Rect(current_width // 2 - 150, current_height // 2 - 50, 300, 50)
-        pygame.draw.rect(screen, WHITE, mass_input_rect, border_radius=10)
-        pygame.draw.rect(screen, BLACK, mass_input_rect, 2, border_radius=10)
-        prompt_surf = font.render(mass_prompt, True, YELLOW)
+        input_rect = pygame.Rect(current_width // 2 - 150, current_height // 2 - 50, 300, 50)
+        pygame.draw.rect(screen, WHITE, input_rect, border_radius=10)
+        pygame.draw.rect(screen, BLACK, input_rect, 2, border_radius=10)
+        prompt_surf = font.render(current_prompt, True, YELLOW)
         prompt_rect = prompt_surf.get_rect(center=(current_width // 2, current_height // 2 - 80))
-        prompt_shadow = font.render(mass_prompt, True, BLACK)
+        prompt_shadow = font.render(current_prompt, True, BLACK)
         shadow_rect = prompt_rect.copy()
         shadow_rect.x += 2
         shadow_rect.y += 2
@@ -417,8 +535,9 @@ while running:
         screen.blit(prompt_surf, prompt_rect)
 
         text_surf = font.render(input_text, True, BLACK)
-        text_rect = text_surf.get_rect(center=mass_input_rect.center)
+        text_rect = text_surf.get_rect(center=input_rect.center)
         screen.blit(text_surf, text_rect)
+
         inst_surf = small_font.render("Нажмите Enter для подтверждения", True, YELLOW)
         inst_rect = inst_surf.get_rect(center=(current_width // 2, current_height // 2 + 30))
         inst_shadow = small_font.render("Нажмите Enter для подтверждения", True, BLACK)
