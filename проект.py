@@ -34,9 +34,9 @@ def make_circular_surface(image):
 
 pygame.init()
 
-WIDTH, HEIGHT = 800, 600
-current_width, current_height = WIDTH, HEIGHT
-screen = pygame.display.set_mode((current_width, current_height), pygame.RESIZABLE)
+WIDTH, HEIGHT = 1400, 830
+tekushaya_shirina, tekushaya_vysota = WIDTH, HEIGHT
+screen = pygame.display.set_mode((tekushaya_shirina, tekushaya_vysota), pygame.RESIZABLE)
 clock = pygame.time.Clock()
 
 WHITE = (255, 255, 255)
@@ -47,316 +47,380 @@ LIGHT_BLUE = (150, 200, 255)
 GREEN = (100, 255, 100)
 YELLOW = (255, 255, 0)
 RED = (255, 100, 100)
+POLZUNOK_CVET = (100, 100, 255)
+POLZUNOK_RUCHKA_CVET = (200, 200, 255)
 
 font = pygame.font.SysFont(None, 36)
 small_font = pygame.font.SysFont(None, 24)
 
 background_original = pygame.image.load('cosmos.jpg').convert()
-background = pygame.transform.scale(background_original, (current_width, current_height))
+background = pygame.transform.scale(background_original, (tekushaya_shirina, tekushaya_vysota))
 
 GIF_PATH = "sun.gif"
 pil_frames = extract_gif_frames(GIF_PATH)
 gif_frames = load_frames_as_surfaces(pil_frames)
-sun_original_size = gif_frames[0].get_width()
+solnce_original_razmer = gif_frames[0].get_width()
 
-SCALE_FACTOR = 0.5
-scaled_frames = []
+SCALE_FACTOR = 0.4
+masshtabirovannye_kadry = []
 for frame in gif_frames:
-    scaled_surface = pygame.transform.smoothscale(frame, (int(frame.get_width() * SCALE_FACTOR), int(frame.get_height() * SCALE_FACTOR)))
-    scaled_frames.append(scaled_surface)
+    masshtabirovannaya_poverhnost = pygame.transform.smoothscale(frame, (int(frame.get_width() * SCALE_FACTOR), int(frame.get_height() * SCALE_FACTOR)))
+    masshtabirovannye_kadry.append(masshtabirovannaya_poverhnost)
 
-button_width, button_height = 100, 50
-button_color = (50, 50, 50)
-hover_color = (100, 100, 100)
+knopka_shirina, knopka_vysota = 100, 50
+knopka_cvet = (50, 50, 50)
+knopka_navedenie_cvet = (100, 100, 100)
 
-current_frame = 0
-frame_delay = 100
-last_update = pygame.time.get_ticks()
+tekushiy_kadr = 0
+zaderzhka_kadra = 100
+poslednee_obnovlenie = pygame.time.get_ticks()
 
-planet_icon = pygame.image.load('значок_планеты.jpg').convert_alpha()
-planet_icon = pygame.transform.scale(planet_icon, (67, 50))
-star_icon = pygame.image.load('значок_звезды.webp').convert_alpha()
-star_icon = pygame.transform.scale(star_icon, (74, 50))
-asteroid_icon = pygame.image.load('значок_астероида.webp').convert_alpha()
-asteroid_icon = pygame.transform.scale(asteroid_icon, (67, 50))
+planeta_ikona = pygame.image.load('значок_планеты.jpg').convert_alpha()
+planeta_ikona = pygame.transform.scale(planeta_ikona, (67, 50))
+zvezda_ikona = pygame.image.load('значок_звезды.webp').convert_alpha()
+zvezda_ikona = pygame.transform.scale(zvezda_ikona, (74, 50))
+asteroid_ikona = pygame.image.load('значок_астероида.webp').convert_alpha()
+asteroid_ikona = pygame.transform.scale(asteroid_ikona, (67, 50))
 
-def load_and_make_circular(path, size):
+class PolzunokSkorosti:
+    def __init__(self, x, y, width, height):
+        self.pryamougolnik = pygame.Rect(x, y, width, height)
+        self.max_skorost = 1000
+        self.min_skorost = 0
+        self.skorost = 500
+        self.ruchka_x = x + (self.skorost / self.max_skorost) * width
+        self.ruchka_shirina = 20
+        self.ruchka_vysota = height + 10
+        self.peretaskivaetsya = False
+
+    def rucka_pryamougolnik(self):
+        return pygame.Rect(self.ruchka_x - self.ruchka_shirina // 2,
+                          self.pryamougolnik.y - 5,
+                          self.ruchka_shirina,
+                          self.ruchka_vysota)
+
+    def obnovit(self, mouse_pos, mouse_pressed):
+        rucka_rect = self.rucka_pryamougolnik()
+
+        if mouse_pressed[0]:
+            if rucka_rect.collidepoint(mouse_pos) or self.peretaskivaetsya:
+                self.peretaskivaetsya = True
+                self.ruchka_x = max(self.pryamougolnik.left, min(mouse_pos[0], self.pryamougolnik.right))
+                self.skorost = ((self.ruchka_x - self.pryamougolnik.left) / self.pryamougolnik.width) * (self.max_skorost - self.min_skorost) + self.min_skorost
+        else:
+            self.peretaskivaetsya = False
+
+    def narisovat(self, screen):
+        pygame.draw.rect(screen, GRAY, self.pryamougolnik, border_radius=5)
+        pygame.draw.rect(screen, WHITE, self.pryamougolnik, 2, border_radius=5)
+
+        zapolnennaya_shirina = self.ruchka_x - self.pryamougolnik.left
+        if zapolnennaya_shirina > 0:
+            zapolnennyy_pryamougolnik = pygame.Rect(self.pryamougolnik.left, self.pryamougolnik.top, zapolnennaya_shirina, self.pryamougolnik.height)
+            pygame.draw.rect(screen, POLZUNOK_CVET, zapolnennyy_pryamougolnik, border_radius=5)
+
+        rucka_rect = self.rucka_pryamougolnik()
+        pygame.draw.rect(screen, POLZUNOK_RUCHKA_CVET, rucka_rect, border_radius=8)
+        pygame.draw.rect(screen, WHITE, rucka_rect, 2, border_radius=8)
+
+        skorost_text = small_font.render(f"Скорость: {self.skorost:.1f}", True, YELLOW)
+        text_rect = skorost_text.get_rect(midleft=(self.pryamougolnik.right + 10, self.pryamougolnik.centery))
+        screen.blit(skorost_text, text_rect)
+
+    def poluchit_koefficient_skorosti(self):
+        return self.skorost / 50.0
+
+def zagruzit_i_sdelat_kruglym(path, size):
     image = pygame.image.load(path).convert_alpha()
     image = pygame.transform.scale(image, (size, size))
     return make_circular_surface(image)
 
-star_size_factors = {
-    "sirius": 2.5,
-    "canopus": 1.8,
-    "arcturus": 1.6,
-    "vega": 1.4,
-    "aldebaran": 1.5
+koficzienty_razmera_zvezd = {
+    "Sverhgiant": 1.4,
+    "Gigant": 1.0,
+    "Belyy_karlik": 0.8,
 }
 
-stars_names = set(star_size_factors.keys())
+imena_zvezd = set(koficzienty_razmera_zvezd.keys())
 
-celestial_objects = {
-    "earth": {"image": load_and_make_circular('Земля.png', 180), "base_size": 180, "positions": []},
-    "mercury": {"image": load_and_make_circular('Меркурий.png', 140), "base_size": 140, "positions": []},
-    "venus": {"image": load_and_make_circular('Венера.png', 140), "base_size": 140, "positions": []},
-    "mars": {"image": load_and_make_circular('Марс.png', 130), "base_size": 130, "positions": []},
-    "jupiter": {"image": load_and_make_circular('Юпитер.png', 220), "base_size": 220, "positions": []},
-    "saturn": {"image": load_and_make_circular('Сатурн.png', 260), "base_size": 260, "positions": []},
-    "uranium": {"image": load_and_make_circular('Уран.png', 240), "base_size": 240, "positions": []},
-    "neptune": {"image": load_and_make_circular('Нептун.png', 180), "base_size": 180, "positions": []},
-    "sirius": {"image": load_and_make_circular('Сириус.png', int(sun_original_size * star_size_factors["sirius"])),
-               "base_size": int(sun_original_size * star_size_factors["sirius"]), "positions": []},
-    "canopus": {"image": load_and_make_circular('Канопус.png', int(sun_original_size * star_size_factors["canopus"])),
-                "base_size": int(sun_original_size * star_size_factors["canopus"]), "positions": []},
-    "arcturus": {"image": load_and_make_circular('Арктур.png', int(sun_original_size * star_size_factors["arcturus"])),
-                 "base_size": int(sun_original_size * star_size_factors["arcturus"]), "positions": []},
-    "vega": {"image": load_and_make_circular('Вега.png', int(sun_original_size * star_size_factors["vega"])),
-             "base_size": int(sun_original_size * star_size_factors["vega"]), "positions": []},
-    "aldebaran": {"image": load_and_make_circular('Альдебаран.png', int(sun_original_size * star_size_factors["aldebaran"])),
-                  "base_size": int(sun_original_size * star_size_factors["aldebaran"]), "positions": []},
-    "psyche": {"image": load_and_make_circular('16 Психея.png', 180), "base_size": 180, "positions": []},
-    "dimorph": {"image": load_and_make_circular('Диморф.png', 180), "base_size": 180, "positions": []},
-    "bennu": {"image": load_and_make_circular('Бенну.png', 180), "base_size": 180, "positions": []},
-    "ryugu": {"image": load_and_make_circular('Рюгу.png', 180), "base_size": 180, "positions": []},
-    "ceres": {"image": load_and_make_circular('Церера.png', 180), "base_size": 180, "positions": []}
+nebesnye_obekty = {
+    "zheleznaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Железная планета.png', 120), "base_size": 120, "positions": []},
+    "gazovaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Газовая планета.png', 180), "base_size": 180, "positions": []},
+    "ledyanaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Ледяная планета.png', 140), "base_size": 140, "positions": []},
+    "Sverhgiant": {"image": zagruzit_i_sdelat_kruglym('Сверхгигант.png', int(solnce_original_razmer * koficzienty_razmera_zvezd["Sverhgiant"] * 0.7)),
+               "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Sverhgiant"] * 0.7), "positions": []},
+    "Gigant": {"image": zagruzit_i_sdelat_kruglym('Гигант.png', int(solnce_original_razmer * koficzienty_razmera_zvezd["Gigant"] * 0.7)),
+                "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Gigant"] * 0.7), "positions": []},
+    "Belyy_karlik": {"image": zagruzit_i_sdelat_kruglym('Белый карлик.png', int(solnce_original_razmer * koficzienty_razmera_zvezd["Belyy_karlik"] * 0.7)),
+                 "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Belyy_karlik"] * 0.7), "positions": []},
+    "Metallicheskii": {"image": zagruzit_i_sdelat_kruglym('Металлический.png', 140), "base_size": 140, "positions": []},
+    "Siikatnii": {"image": zagruzit_i_sdelat_kruglym('Силикатный.png', 140), "base_size": 140, "positions": []},
+    "Uglerodnii": {"image": zagruzit_i_sdelat_kruglym('Углеродный.png', 140), "base_size": 140, "positions": []},
 }
 
-selected_object = None
-current_menu = "main"
+vybrannyy_obekt = None
+tekushchee_menu = "main"
 menus = {}
 
-input_mode = 0
-input_text = ""
-mass_prompt = "Введите массу объекта (в массах Земли):"
-velocity_prompt = "Введите скорость (vx vy в пикселях/сек):"
-current_prompt = mass_prompt
-pending_object = None
-pending_mass = None
-pending_vx = pending_vy = 0.0
+rezhim_vvoda = 0
+vvedennyy_text = ""
+zapros_massy = "Введите массу объекта (в массах Земли):"
+tekushchiy_zapros = zapros_massy
+ozhidaemyy_obekt = None
+ozhidaemaya_massa = None
 
 
-def select_object(obj_name):
-    global input_mode, pending_object, current_prompt, input_text
-    pending_object = obj_name
-    input_mode = 1
-    input_text = ""
-    if obj_name in stars_names:
-        current_prompt = "Введите массу объекта (в массах Солнца):"
+def vybrat_obekt(imya_obekta):
+    global rezhim_vvoda, ozhidaemyy_obekt, tekushchiy_zapros, vvedennyy_text
+    ozhidaemyy_obekt = imya_obekta
+    rezhim_vvoda = 1
+    vvedennyy_text = ""
+    if imya_obekta in imena_zvezd:
+        tekushchiy_zapros = "Введите массу объекта (в массах Солнца):"
     else:
-        current_prompt = mass_prompt
+        tekushchiy_zapros = zapros_massy
 
-def create_menus():
+def sozdat_menyu():
     global menus
     menus["main"] = [
-        {"text": "Планеты", "submenu": "planets", "icon": planet_icon},
-        {"text": "Звезды", "submenu": "stars", "icon": star_icon},
-        {"text": "Астероид", "submenu": "asteroid", "icon": asteroid_icon},
+        {"text": "Планеты", "submenu": "planets", "icon": planeta_ikona},
+        {"text": "Звезды", "submenu": "stars", "icon": zvezda_ikona},
+        {"text": "Астероид", "submenu": "asteroid", "icon": asteroid_ikona},
     ]
-
     menus["planets"] = [
-        {"text": "Меркурий", "action": lambda: select_object("mercury")},
-        {"text": "Венера", "action": lambda: select_object("venus")},
-        {"text": "Земля", "action": lambda: select_object("earth")},
-        {"text": "Марс", "action": lambda: select_object("mars")},
-        {"text": "Юпитер", "action": lambda: select_object("jupiter")},
-        {"text": "Сатурн", "action": lambda: select_object("saturn")},
-        {"text": "Уран", "action": lambda: select_object("uranium")},
-        {"text": "Нептун", "action": lambda: select_object("neptune")},
+        {"text": "Железная планета", "action": lambda: vybrat_obekt("zheleznaya_planeta")},
+        {"text": "Газовая планета", "action": lambda: vybrat_obekt("gazovaya_planeta")},
+        {"text": "Ледяная планета", "action": lambda: vybrat_obekt("ledyanaya_planeta")},
     ]
 
     menus["stars"] = [
-        {"text": "Сириус", "action": lambda: select_object("sirius")},
-        {"text": "Канопус", "action": lambda: select_object("canopus")},
-        {"text": "Арктур", "action": lambda: select_object("arcturus")},
-        {"text": "Вега", "action": lambda: select_object("vega")},
-        {"text": "Альдебаран", "action": lambda: select_object("aldebaran")},
+        {"text": "Сверхгигант", "action": lambda: vybrat_obekt("Sverhgiant")},
+        {"text": "Гигант", "action": lambda: vybrat_obekt("Gigant")},
+        {"text": "Белый карлик", "action": lambda: vybrat_obekt("Belyy_karlik")},
     ]
 
     menus["asteroid"] = [
-        {"text": "16 Психея", "action": lambda: select_object("psyche")},
-        {"text": "Диморф", "action": lambda: select_object("dimorph")},
-        {"text": "Бенну", "action": lambda: select_object("bennu")},
-        {"text": "Рюгу", "action": lambda: select_object("ryugu")},
-        {"text": "Церера", "action": lambda: select_object("ceres")},
+        {"text": "Металлический", "action": lambda: vybrat_obekt("Metallicheskii")},
+        {"text": "Силикатный", "action": lambda: vybrat_obekt("Siikatnii")},
+        {"text": "Углеродный", "action": lambda: vybrat_obekt("Uglerodnii")},
     ]
 
-create_menus()
+sozdat_menyu()
 
-def draw_text_or_icon(item, rect, hover=False):
+def narisovat_text_ili_ikonu(item, rect, navedenie=False):
     if "icon" in item:
         icon_surf = item["icon"]
-        if icon_surf == star_icon:
+        if icon_surf == zvezda_ikona:
             bg_rect = rect.inflate(25, 20)
             pygame.draw.rect(screen, WHITE, bg_rect, border_radius=8)
         icon_rect = icon_surf.get_rect(center=rect.center)
         screen.blit(icon_surf, icon_rect)
     else:
         color = BLACK
-        bg_color = LIGHT_BLUE if hover else WHITE
+        bg_color = LIGHT_BLUE if navedenie else WHITE
+        if tekushchee_menu != "main":
+            rect.width = 250
         pygame.draw.rect(screen, bg_color, rect, border_radius=4)
-        text_surf = font.render(item["text"], True, color)
+        if len(item["text"]) > 15:
+            text_surf = small_font.render(item["text"], True, color)
+        else:
+            text_surf = font.render(item["text"], True, color)
         text_rect = text_surf.get_rect(center=rect.center)
         screen.blit(text_surf, text_rect)
 
-def handle_menu_click(pos):
-    global current_menu
-    for item in menus[current_menu]:
+def obrabotat_nazhatie_menu(pos):
+    global tekushchee_menu
+    for item in menus[tekushchee_menu]:
         if "rect" in item and item["rect"] and item["rect"].collidepoint(pos):
             if "submenu" in item:
-                current_menu = item["submenu"]
+                tekushchee_menu = item["submenu"]
                 return
             elif "action" in item:
                 item["action"]()
                 return
-    if current_menu != "main":
-        current_menu = "main"
+    if tekushchee_menu != "main":
+        tekushchee_menu = "main"
 
-def place_object_with_mass_and_velocity(pos, obj_name, mass, vx, vy):
+def razmestit_obekt_s_massoy(pos, imya_obekta, massa):
     try:
-        mass_value = float(mass)
-        mass_value = max(0.1, min(mass_value, 100))
-        if obj_name in stars_names:
-            size_multiplier = 1.0 + (mass_value ** 0.5) * 0.5
+        znachenie_massy = float(massa)
+        znachenie_massy = max(0.1, min(znachenie_massy, 100))
+        if imya_obekta in imena_zvezd:
+            mnozhitel_razmera = 1.0 + (znachenie_massy ** 0.5) * 0.5
         else:
-            size_multiplier = 0.8 + (mass_value ** 0.5) / 8
+            mnozhitel_razmera = 0.8 + (znachenie_massy ** 0.5) / 8
 
-        obj_data = celestial_objects[obj_name]
-        base_size = obj_data["base_size"]
-        new_size = int(base_size * size_multiplier * SCALE_FACTOR)
-        original_image = obj_data["image"]
-        scaled_image = pygame.transform.smoothscale(original_image, (new_size, new_size))
-        if scaled_image.get_width() != scaled_image.get_height():
-            size = max(scaled_image.get_width(), scaled_image.get_height())
+        dannye_obekta = nebesnye_obekty[imya_obekta]
+        bazovyy_razmer = dannye_obekta["base_size"]
+        novyy_razmer = int(bazovyy_razmer * mnozhitel_razmera * SCALE_FACTOR)
+        originalnoe_izobrazhenie = dannye_obekta["image"]
+        masshtabirovannoe_izobrazhenie = pygame.transform.smoothscale(originalnoe_izobrazhenie, (novyy_razmer, novyy_razmer))
+
+        poziciya_solnca = [tekushaya_shirina // 2, tekushaya_vysota // 2]
+
+        dx = pos[0] - poziciya_solnca[0]
+        dy = pos[1] - poziciya_solnca[1]
+        rasstoyanie = math.sqrt(dx*dx + dy*dy)
+
+        nachalnyy_ugol = math.atan2(dy, dx)
+
+        if masshtabirovannoe_izobrazhenie.get_width() != masshtabirovannoe_izobrazhenie.get_height():
+            size = max(masshtabirovannoe_izobrazhenie.get_width(), masshtabirovannoe_izobrazhenie.get_height())
             square_surface = pygame.Surface((size, size), pygame.SRCALPHA)
             square_surface.fill((0, 0, 0, 0))
-            x_offset = (size - scaled_image.get_width()) // 2
-            y_offset = (size - scaled_image.get_height()) // 2
-            square_surface.blit(scaled_image, (x_offset, y_offset))
-            scaled_image = make_circular_surface(square_surface)
+            x_offset = (size - masshtabirovannoe_izobrazhenie.get_width()) // 2
+            y_offset = (size - masshtabirovannoe_izobrazhenie.get_height()) // 2
+            square_surface.blit(masshtabirovannoe_izobrazhenie, (x_offset, y_offset))
+            masshtabirovannoe_izobrazhenie = make_circular_surface(square_surface)
         else:
-            scaled_image = make_circular_surface(scaled_image)
+            masshtabirovannoe_izobrazhenie = make_circular_surface(masshtabirovannoe_izobrazhenie)
 
-        obj_data["positions"].append({
+        dannye_obekta["positions"].append({
             "pos": [pos[0], pos[1]],
-            "image": scaled_image,
-            "mass": mass_value,
-            "original_size": base_size,
-            "size_multiplier": size_multiplier,
-            "vx": vx,
-            "vy": vy
+            "image": masshtabirovannoe_izobrazhenie,
+            "mass": znachenie_massy,
+            "original_size": bazovyy_razmer,
+            "size_multiplier": mnozhitel_razmera,
+            "rasstoyanie": rasstoyanie,
+            "ugol": nachalnyy_ugol,
+            "skorost_vrasheniya": 0.02
         })
         return True
     except ValueError:
         print("Некорректное значение массы")
         return False
 
-def delete_object_at_pos(pos):
-    for obj_name, obj_data in celestial_objects.items():
-        for i, placed_obj in enumerate(obj_data["positions"]):
-            obj_rect = placed_obj["image"].get_rect(center=placed_obj["pos"])
-            if obj_rect.collidepoint(pos):
-                obj_data["positions"].pop(i)
+def udalit_obekt_po_pozicii(pos):
+    for imya_obekta, dannye_obekta in nebesnye_obekty.items():
+        for i, razmeshchennyy_obekt in enumerate(dannye_obekta["positions"]):
+            obekt_rect = razmeshchennyy_obekt["image"].get_rect(center=razmeshchennyy_obekt["pos"])
+            if obekt_rect.collidepoint(pos):
+                dannye_obekta["positions"].pop(i)
                 return True
     return False
 
-def scale_all_objects(factor):
-    global SCALE_FACTOR, scaled_frames, gif_frames
+def masshtabirovat_vse_obekty(factor):
+    global SCALE_FACTOR, masshtabirovannye_kadry, gif_frames
     SCALE_FACTOR *= factor
-    SCALE_FACTOR = max(0.2, min(SCALE_FACTOR, 2.0))
-    scaled_frames = []
+    SCALE_FACTOR = max(0.1, min(SCALE_FACTOR, 1.0))  # Изменили максимальный масштаб
+    masshtabirovannye_kadry = []
     for frame in gif_frames:
-        scaled_surface = pygame.transform.smoothscale(
+        masshtabirovannaya_poverhnost = pygame.transform.smoothscale(
             frame,
             (int(frame.get_width() * SCALE_FACTOR), int(frame.get_height() * SCALE_FACTOR)),
         )
-        scaled_frames.append(scaled_surface)
-    for obj_name, obj_data in celestial_objects.items():
-        for placed_obj in obj_data["positions"]:
-            new_size = int(placed_obj["original_size"] * placed_obj["size_multiplier"] * SCALE_FACTOR)
-            original_image = obj_data["image"]
-            scaled_image = pygame.transform.smoothscale(original_image, (new_size, new_size))
-            if scaled_image.get_width() != scaled_image.get_height():
-                size = max(scaled_image.get_width(), scaled_image.get_height())
+        masshtabirovannye_kadry.append(masshtabirovannaya_poverhnost)
+    for imya_obekta, dannye_obekta in nebesnye_obekty.items():
+        for razmeshchennyy_obekt in dannye_obekta["positions"]:
+            novyy_razmer = int(razmeshchennyy_obekt["original_size"] * razmeshchennyy_obekt["size_multiplier"] * SCALE_FACTOR)
+            originalnoe_izobrazhenie = dannye_obekta["image"]
+            masshtabirovannoe_izobrazhenie = pygame.transform.smoothscale(originalnoe_izobrazhenie, (novyy_razmer, novyy_razmer))
+            if masshtabirovannoe_izobrazhenie.get_width() != masshtabirovannoe_izobrazhenie.get_height():
+                size = max(masshtabirovannoe_izobrazhenie.get_width(), masshtabirovannoe_izobrazhenie.get_height())
                 square_surface = pygame.Surface((size, size), pygame.SRCALPHA)
                 square_surface.fill((0, 0, 0, 0))
-                x_offset = (size - scaled_image.get_width()) // 2
-                y_offset = (size - scaled_image.get_height()) // 2
-                square_surface.blit(scaled_image, (x_offset, y_offset))
-                placed_obj["image"] = make_circular_surface(square_surface)
+                x_offset = (size - masshtabirovannoe_izobrazhenie.get_width()) // 2
+                y_offset = (size - masshtabirovannoe_izobrazhenie.get_height()) // 2
+                square_surface.blit(masshtabirovannoe_izobrazhenie, (x_offset, y_offset))
+                razmeshchennyy_obekt["image"] = make_circular_surface(square_surface)
             else:
-                placed_obj["image"] = make_circular_surface(scaled_image)
+                razmeshchennyy_obekt["image"] = make_circular_surface(masshtabirovannoe_izobrazhenie)
+
+def pereschitat_pozicii_obektov(old_width, old_height, new_width, new_height):
+    for imya_obekta, dannye_obekta in nebesnye_obekty.items():
+        for razmeshchennyy_obekt in dannye_obekta["positions"]:
+            staraya_x, staraya_y = razmeshchennyy_obekt["pos"]
+            norm_x = staraya_x / old_width
+            norm_y = staraya_y / old_height
+
+            novaya_x = norm_x * new_width
+            novaya_y = norm_y * new_height
+
+            razmeshchennyy_obekt["pos"][0] = novaya_x
+            razmeshchennyy_obekt["pos"][1] = novaya_y
 
 G = 0.5
-SOFTENING = 100.0
-SUN_MASS = 10000
+SMYAGCHENIE = 100.0
+MASSA_SOLNCA = 10000
+
+def obnovit_orbity():
+    poziciya_solnca = [tekushaya_shirina // 2, tekushaya_vysota // 2]
+    koefficient_skorosti = polzunok_skorosti.poluchit_koefficient_skorosti()
+
+    for imya_obekta, dannye_obekta in nebesnye_obekty.items():
+        for obekt in dannye_obekta["positions"]:
+            if "ugol" in obekt and "rasstoyanie" in obekt:
+                skorost_vrasheniya = 0.03 / math.sqrt(obekt["rasstoyanie"] / 100) * koefficient_skorosti
+                obekt["ugol"] += skorost_vrasheniya * dt
+
+                obekt["pos"][0] = poziciya_solnca[0] + obekt["rasstoyanie"] * math.cos(obekt["ugol"])
+                obekt["pos"][1] = poziciya_solnca[1] + obekt["rasstoyanie"] * math.sin(obekt["ugol"])
+
+polzunok_skorosti = PolzunokSkorosti(20, HEIGHT - 80, 200, 20)
 
 running = True
 while running:
     dt = clock.get_time() / 1000.0
+    dt = min(dt, 0.05)
+
     screen.blit(background, (0, 0))
-    mouse_pos = pygame.mouse.get_pos()
+    poziciya_myshi = pygame.mouse.get_pos()
+    knopki_myshi = pygame.mouse.get_pressed()
+
+    polzunok_skorosti.obnovit(poziciya_myshi, knopki_myshi)
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
         elif event.type == pygame.VIDEORESIZE:
-            current_width, current_height = event.w, event.h
-            screen = pygame.display.set_mode((current_width, current_height), pygame.RESIZABLE)
-            background = pygame.transform.scale(background_original, (current_width, current_height))
+            staraya_shirina, staraya_vysota = tekushaya_shirina, tekushaya_vysota
+            tekushaya_shirina, tekushaya_vysota = event.w, event.h
+            screen = pygame.display.set_mode((tekushaya_shirina, tekushaya_vysota), pygame.RESIZABLE)
+
+            pereschitat_pozicii_obektov(staraya_shirina, staraya_vysota, tekushaya_shirina, tekushaya_vysota)
+            polzunok_skorosti.pryamougolnik.y = tekushaya_vysota - 80
+            background = pygame.transform.scale(background_original, (tekushaya_shirina, tekushaya_vysota))
 
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                if input_mode != 0:
-                    input_mode = 0
-                    pending_object = None
-                    input_text = ""
+                if rezhim_vvoda != 0:
+                    rezhim_vvoda = 0
+                    ozhidaemyy_obekt = None
+                    vvedennyy_text = ""
                 else:
                     running = False
 
-            if input_mode == 1 or input_mode == 2:
+            if rezhim_vvoda == 1:
                 if event.key == pygame.K_RETURN:
-                    if input_mode == 1:
-                        try:
-                            mass_val = float(input_text)
-                            mass_val = max(0.1, min(mass_val, 100))
-                            pending_mass = mass_val
-                            input_mode = 2
-                            input_text = ""
-                            current_prompt = velocity_prompt
-                        except ValueError:
-                            input_text = ""
-                    elif input_mode == 2:
-                        parts = input_text.strip().split()
-                        if len(parts) == 2:
-                            try:
-                                vx = float(parts[0])
-                                vy = float(parts[1])
-                                pending_vx = max(-500, min(500, vx))
-                                pending_vy = max(-500, min(500, vy))
-                                input_mode = 0
-                                input_text = ""
-                            except ValueError:
-                                input_text = ""
-                        else:
-                            input_text = ""
+                    try:
+                        znachenie_massy = float(vvedennyy_text)
+                        znachenie_massy = max(0.1, min(znachenie_massy, 100))
+                        ozhidaemaya_massa = znachenie_massy
+                        rezhim_vvoda = 0
+                        vvedennyy_text = ""
+                    except ValueError:
+                        vvedennyy_text = ""
                 elif event.key == pygame.K_BACKSPACE:
-                    input_text = input_text[:-1]
+                    vvedennyy_text = vvedennyy_text[:-1]
                 else:
-                    if event.unicode.isdigit() or event.unicode == '.' or event.unicode == ' ' or event.unicode == '-':
-                        input_text += event.unicode
+                    if event.unicode.isdigit() or event.unicode == '.' or event.unicode == '-':
+                        vvedennyy_text += event.unicode
 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             pos = event.pos
-            plus_rect = pygame.Rect(current_width // 2 - button_width - 20, current_height - 80, button_width, button_height)
-            minus_rect = pygame.Rect(current_width // 2 + 20, current_height - 80, button_width, button_height)
+            plyus_pryamougolnik = pygame.Rect(tekushaya_shirina // 2 - knopka_shirina - 20, tekushaya_vysota - 80, knopka_shirina, knopka_vysota)
+            minus_pryamougolnik = pygame.Rect(tekushaya_shirina // 2 + 20, tekushaya_vysota - 80, knopka_shirina, knopka_vysota)
 
             if event.button == 1:
-                if plus_rect.collidepoint(pos):
-                    scale_all_objects(1.1)
+                if polzunok_skorosti.rucka_pryamougolnik().collidepoint(pos):
                     continue
-                elif minus_rect.collidepoint(pos):
-                    scale_all_objects(0.9)
+
+                if plyus_pryamougolnik.collidepoint(pos):
+                    masshtabirovat_vse_obekty(1.1)
+                    continue
+                elif minus_pryamougolnik.collidepoint(pos):
+                    masshtabirovat_vse_obekty(0.9)
                     continue
 
                 menu_y = 10
@@ -367,35 +431,34 @@ while running:
                     pygame.Rect(10 + menu_width + 10, menu_y, menu_width, menu_height),
                     pygame.Rect(10 + 2*(menu_width + 10), menu_y, menu_width, menu_height)
                 ]
-                clicked_on_menu = False
+                click_na_menu = False
                 for i, item in enumerate(menus["main"]):
                     item["rect"] = main_rects[i]
                     if item["rect"].collidepoint(pos):
-                        clicked_on_menu = True
+                        click_na_menu = True
                         break
 
-                if not clicked_on_menu and current_menu != "main":
+                if not click_na_menu and tekushchee_menu != "main":
                     y_offset = 40
                     menu_item_height = 30
-                    for item in menus[current_menu]:
-                        item["rect"] = pygame.Rect(10, y_offset, 190, menu_item_height)
+                    for item in menus[tekushchee_menu]:
+                        item["rect"] = pygame.Rect(10, y_offset, 250, menu_item_height)
                         if item["rect"].collidepoint(pos):
-                            clicked_on_menu = True
+                            click_na_menu = True
                             break
                         y_offset += menu_item_height + 5
 
-                handle_menu_click(pos)
+                obrabotat_nazhatie_menu(pos)
 
-                if not clicked_on_menu and not (plus_rect.collidepoint(pos) or minus_rect.collidepoint(pos)) and input_mode == 0 and pending_object is not None and pos[1] > 80:
-                    if place_object_with_mass_and_velocity(pos, pending_object, pending_mass, pending_vx, pending_vy):
-                        pending_object = None
-                        pending_mass = None
-                        pending_vx = pending_vy = 0.0
+                if not click_na_menu and not (plyus_pryamougolnik.collidepoint(pos) or minus_pryamougolnik.collidepoint(pos)) and rezhim_vvoda == 0 and ozhidaemyy_obekt is not None and ozhidaemaya_massa is not None and pos[1] > 80:
+                    if razmestit_obekt_s_massoy(pos, ozhidaemyy_obekt, ozhidaemaya_massa):
+                        ozhidaemyy_obekt = None
+                        ozhidaemaya_massa = None
 
             elif event.button == 3:
-                clicked_on_ui = False
-                if plus_rect.collidepoint(pos) or minus_rect.collidepoint(pos):
-                    clicked_on_ui = True
+                click_na_ui = False
+                if plyus_pryamougolnik.collidepoint(pos) or minus_pryamougolnik.collidepoint(pos) or polzunok_skorosti.rucka_pryamougolnik().collidepoint(pos):
+                    click_na_ui = True
 
                 menu_y = 10
                 menu_width = 60
@@ -408,21 +471,21 @@ while running:
                 for i, item in enumerate(menus["main"]):
                     item["rect"] = main_rects[i]
                     if item["rect"].collidepoint(pos):
-                        clicked_on_ui = True
+                        click_na_ui = True
                         break
 
-                if not clicked_on_ui and current_menu != "main":
+                if not click_na_ui and tekushchee_menu != "main":
                     y_offset = 40
                     menu_item_height = 30
-                    for item in menus[current_menu]:
-                        item["rect"] = pygame.Rect(10, y_offset, 190, menu_item_height)
+                    for item in menus[tekushchee_menu]:
+                        item["rect"] = pygame.Rect(10, y_offset, 250, menu_item_height)
                         if item["rect"].collidepoint(pos):
-                            clicked_on_ui = True
+                            click_na_ui = True
                             break
                         y_offset += menu_item_height + 5
 
-                if not clicked_on_ui and pos[1] > 80:
-                    if delete_object_at_pos(pos):
+                if not click_na_ui and pos[1] > 80:
+                    if udalit_obekt_po_pozicii(pos):
                         print("Объект удален")
 
     menu_y = 10
@@ -435,111 +498,56 @@ while running:
     ]
     for i, item in enumerate(menus["main"]):
         item["rect"] = main_rects[i]
-        hover = item["rect"].collidepoint(mouse_pos)
-        draw_text_or_icon(item, item["rect"], hover)
+        navedenie = item["rect"].collidepoint(poziciya_myshi)
+        narisovat_text_ili_ikonu(item, item["rect"], navedenie)
 
-    if current_menu != "main":
+    if tekushchee_menu != "main":
         y_offset = 40
         menu_item_height = 30
-        for item in menus[current_menu]:
-            item["rect"] = pygame.Rect(10, y_offset, 190, menu_item_height)
-            hover = item["rect"].collidepoint(mouse_pos)
-            draw_text_or_icon(item, item["rect"], hover)
+        for item in menus[tekushchee_menu]:
+            item["rect"] = pygame.Rect(10, y_offset, 250, menu_item_height)
+            navedenie = item["rect"].collidepoint(poziciya_myshi)
+            narisovat_text_ili_ikonu(item, item["rect"], navedenie)
             y_offset += menu_item_height + 5
 
-    total_objects = sum(len(obj_data["positions"]) for obj_data in celestial_objects.values())
-    if total_objects >= 2:
-        bodies = []
-        sun_pos = [current_width // 2, current_height // 2]
-        bodies.append({"pos": sun_pos, "mass": SUN_MASS, "vx": 0, "vy": 0, "is_sun": True})
+    obnovit_orbity()
 
-        for obj_name, obj_data in celestial_objects.items():
-            for placed_obj in obj_data["positions"]:
-                bodies.append({
-                    "pos": placed_obj["pos"],
-                    "mass": placed_obj["mass"] * 10,
-                    "vx": placed_obj.get("vx", 0),
-                    "vy": placed_obj.get("vy", 0),
-                    "obj_ref": placed_obj
-                })
-
-        for i, body in enumerate(bodies):
-            if body.get("is_sun"):
-                continue
-            ax, ay = 0.0, 0.0
-            for j, other in enumerate(bodies):
-                if i == j:
-                    continue
-                dx = other["pos"][0] - body["pos"][0]
-                dy = other["pos"][1] - body["pos"][1]
-                dist_sq = dx*dx + dy*dy + SOFTENING
-                dist = math.sqrt(dist_sq)
-                force = G * other["mass"] / dist_sq
-                ax += force * dx / dist
-                ay += force * dy / dist
-            body["vx"] += ax * dt
-            body["vy"] += ay * dt
-
-        for body in bodies:
-            if body.get("is_sun"):
-                continue
-            body["pos"][0] += body["vx"] * dt
-            body["pos"][1] += body["vy"] * dt
-
-            if body["pos"][0] < 0:
-                body["pos"][0] = 0
-                body["vx"] *= -0.8
-            elif body["pos"][0] > current_width:
-                body["pos"][0] = current_width
-                body["vx"] *= -0.8
-            if body["pos"][1] < 0:
-                body["pos"][1] = 0
-                body["vy"] *= -0.8
-            elif body["pos"][1] > current_height:
-                body["pos"][1] = current_height
-                body["vy"] *= -0.8
-
-        for body in bodies:
-            if "obj_ref" in body:
-                body["obj_ref"]["vx"] = body["vx"]
-                body["obj_ref"]["vy"] = body["vy"]
-
-    for obj_name, obj_data in celestial_objects.items():
-        for placed_obj in obj_data["positions"]:
-            img_rect = placed_obj["image"].get_rect(center=placed_obj["pos"])
-            screen.blit(placed_obj["image"], img_rect)
+    for imya_obekta, dannye_obekta in nebesnye_obekty.items():
+        for razmeshchennyy_obekt in dannye_obekta["positions"]:
+            img_rect = razmeshchennyy_obekt["image"].get_rect(center=razmeshchennyy_obekt["pos"])
+            screen.blit(razmeshchennyy_obekt["image"], img_rect)
 
     now = pygame.time.get_ticks()
-    if now - last_update > frame_delay:
-        current_frame = (current_frame + 1) % len(scaled_frames)
-        last_update = now
-    frame = scaled_frames[current_frame]
-    x = (current_width - frame.get_width()) // 2
-    y = (current_height - frame.get_height()) // 2
+    if now - poslednee_obnovlenie > zaderzhka_kadra:
+        tekushiy_kadr = (tekushiy_kadr + 1) % len(masshtabirovannye_kadry)
+        poslednee_obnovlenie = now
+    frame = masshtabirovannye_kadry[tekushiy_kadr]
+    x = (tekushaya_shirina - frame.get_width()) // 2
+    y = (tekushaya_vysota - frame.get_height()) // 2
     screen.blit(frame, (x, y))
 
-    if input_mode != 0:
-        s = pygame.Surface((current_width, current_height), pygame.SRCALPHA)
+    if rezhim_vvoda != 0:
+        s = pygame.Surface((tekushaya_shirina, tekushaya_vysota), pygame.SRCALPHA)
         s.fill((0, 0, 0, 180))
         screen.blit(s, (0, 0))
-        input_rect = pygame.Rect(current_width // 2 - 150, current_height // 2 - 50, 300, 50)
+        input_rect = pygame.Rect(tekushaya_shirina // 2 - 150, tekushaya_vysota // 2 - 50, 300, 50)
         pygame.draw.rect(screen, WHITE, input_rect, border_radius=10)
         pygame.draw.rect(screen, BLACK, input_rect, 2, border_radius=10)
-        prompt_surf = font.render(current_prompt, True, YELLOW)
-        prompt_rect = prompt_surf.get_rect(center=(current_width // 2, current_height // 2 - 80))
-        prompt_shadow = font.render(current_prompt, True, BLACK)
+        prompt_surf = font.render(tekushchiy_zapros, True, YELLOW)
+        prompt_rect = prompt_surf.get_rect(center=(tekushaya_shirina // 2, tekushaya_vysota // 2 - 80))
+        prompt_shadow = font.render(tekushchiy_zapros, True, BLACK)
         shadow_rect = prompt_rect.copy()
         shadow_rect.x += 2
         shadow_rect.y += 2
         screen.blit(prompt_shadow, shadow_rect)
         screen.blit(prompt_surf, prompt_rect)
 
-        text_surf = font.render(input_text, True, BLACK)
+        text_surf = font.render(vvedennyy_text, True, BLACK)
         text_rect = text_surf.get_rect(center=input_rect.center)
         screen.blit(text_surf, text_rect)
 
         inst_surf = small_font.render("Нажмите Enter для подтверждения", True, YELLOW)
-        inst_rect = inst_surf.get_rect(center=(current_width // 2, current_height // 2 + 30))
+        inst_rect = inst_surf.get_rect(center=(tekushaya_shirina // 2, tekushaya_vysota // 2 + 30))
         inst_shadow = small_font.render("Нажмите Enter для подтверждения", True, BLACK)
         shadow_rect = inst_rect.copy()
         shadow_rect.x += 1
@@ -547,22 +555,24 @@ while running:
         screen.blit(inst_shadow, shadow_rect)
         screen.blit(inst_surf, inst_rect)
 
-    def draw_button(rect, label, tooltip=""):
-        color = hover_color if rect.collidepoint(mouse_pos) else button_color
+    def narisovat_knopku(rect, label, podskazka=""):
+        color = knopka_navedenie_cvet if rect.collidepoint(poziciya_myshi) else knopka_cvet
         pygame.draw.rect(screen, color, rect, border_radius=5)
         text = font.render(label, True, WHITE)
         text_rect = text.get_rect(center=rect.center)
         screen.blit(text, text_rect)
-        if tooltip and rect.collidepoint(mouse_pos):
-            tooltip_surf = small_font.render(tooltip, True, WHITE)
-            tooltip_rect = tooltip_surf.get_rect(midbottom=(rect.centerx, rect.top - 5))
-            pygame.draw.rect(screen, BLACK, tooltip_rect.inflate(10, 5), border_radius=3)
-            screen.blit(tooltip_surf, tooltip_rect)
+        if podskazka and rect.collidepoint(poziciya_myshi):
+            podskazka_surf = small_font.render(podskazka, True, WHITE)
+            podskazka_rect = podskazka_surf.get_rect(midbottom=(rect.centerx, rect.top - 5))
+            pygame.draw.rect(screen, BLACK, podskazka_rect.inflate(10, 5), border_radius=3)
+            screen.blit(podskazka_surf, podskazka_rect)
 
-    plus_rect = pygame.Rect(current_width // 2 - button_width - 20, current_height - 80, button_width, button_height)
-    minus_rect = pygame.Rect(current_width // 2 + 20, current_height - 80, button_width, button_height)
-    draw_button(plus_rect, "+")
-    draw_button(minus_rect, "-")
+    polzunok_skorosti.narisovat(screen)
+
+    plyus_pryamougolnik = pygame.Rect(tekushaya_shirina // 2 - knopka_shirina - 20, tekushaya_vysota - 80, knopka_shirina, knopka_vysota)
+    minus_pryamougolnik = pygame.Rect(tekushaya_shirina // 2 + 20, tekushaya_vysota - 80, knopka_shirina, knopka_vysota)
+    narisovat_knopku(plyus_pryamougolnik, "+")
+    narisovat_knopku(minus_pryamougolnik, "-")
 
     pygame.display.flip()
     clock.tick(60)
