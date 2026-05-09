@@ -2,6 +2,7 @@ import pygame
 from PIL import Image
 import math
 import random
+from collections import deque
 
 def extract_gif_frames(gif_path):
     frames = []
@@ -37,7 +38,7 @@ pygame.init()
 WIDTH, HEIGHT = 1400, 830
 tekushaya_shirina, tekushaya_vysota = WIDTH, HEIGHT
 screen = pygame.display.set_mode((tekushaya_shirina, tekushaya_vysota), pygame.RESIZABLE)
-pygame.display.set_caption("Космический симулятор - Режим сборки")
+pygame.display.set_caption("Космический симулятор")
 clock = pygame.time.Clock()
 
 WHITE = (255, 255, 255)
@@ -48,20 +49,24 @@ LIGHT_BLUE = (150, 200, 255)
 GREEN = (100, 255, 100)
 YELLOW = (255, 255, 0)
 RED = (255, 100, 100)
+ORANGE = (255, 165, 0)
+PURPLE = (200, 100, 255)
 POLZUNOK_CVET = (100, 100, 255)
 POLZUNOK_RUCHKA_CVET = (200, 200, 255)
 
 font = pygame.font.SysFont(None, 36)
 small_font = pygame.font.SysFont(None, 24)
+big_font = pygame.font.SysFont(None, 72)
 
 background_original = pygame.image.load('космос.jpg').convert()
 
 class Notification:
-    def __init__(self, text, duration=5.0):
+    def __init__(self, text, duration=3.0):
         self.text = text
         self.duration = duration
         self.start_time = pygame.time.get_ticks()
         self.alpha = 255
+        self.y_offset = 0
 
     def wrap_text(self, text, max_width):
         words = text.split(' ')
@@ -70,7 +75,7 @@ class Notification:
 
         for word in words:
             test_line = ' '.join(current_line + [word])
-            test_surface = font.render(test_line, True, YELLOW)
+            test_surface = small_font.render(test_line, True, YELLOW)
 
             if test_surface.get_width() <= max_width:
                 current_line.append(word)
@@ -88,41 +93,64 @@ class Notification:
         elapsed = (pygame.time.get_ticks() - self.start_time) / 1000.0
         if elapsed > self.duration:
             return False
-        if elapsed > self.duration - 1.0:
-            self.alpha = int(255 * (1 - (elapsed - (self.duration - 1.0))))
+        if elapsed > self.duration - 0.5:
+            self.alpha = int(255 * (1 - (elapsed - (self.duration - 0.5)) / 0.5))
         return True
 
-    def draw(self, screen, screen_width):
-        max_text_width = screen_width - 100
+    def draw(self, screen, screen_width, y_position):
+        max_text_width = min(screen_width - 100, 500)
 
         lines = self.wrap_text(self.text, max_text_width)
 
         text_surfaces = []
         total_height = 0
         for line in lines:
-            text_surf = font.render(line, True, YELLOW)
+            text_surf = small_font.render(line, True, YELLOW)
             text_surf.set_alpha(self.alpha)
             text_surfaces.append(text_surf)
             total_height += text_surf.get_height()
 
-        total_height += (len(lines) - 1) * 5
+        total_height += (len(lines) - 1) * 3
 
         max_line_width = max([surf.get_width() for surf in text_surfaces]) if text_surfaces else 0
-        bg_rect = pygame.Rect(0, 0, max_line_width + 80, total_height + 40)
+        bg_rect = pygame.Rect(0, 0, max_line_width + 40, total_height + 20)
         bg_rect.centerx = screen_width // 2
-        bg_rect.y = 100
+        bg_rect.y = y_position
 
         bg_surf = pygame.Surface(bg_rect.size, pygame.SRCALPHA)
         bg_surf.fill((0, 0, 0, int(180 * self.alpha / 255)))
-        pygame.draw.rect(bg_surf, (50, 50, 50, int(180 * self.alpha / 255)), bg_surf.get_rect(), border_radius=10)
-        pygame.draw.rect(bg_surf, YELLOW, bg_surf.get_rect(), 2, border_radius=10)
+        pygame.draw.rect(bg_surf, (50, 50, 50, int(180 * self.alpha / 255)), bg_surf.get_rect(), border_radius=8)
+        pygame.draw.rect(bg_surf, YELLOW, bg_surf.get_rect(), 1, border_radius=8)
         screen.blit(bg_surf, bg_rect)
 
-        current_y = bg_rect.y + 20
+        current_y = bg_rect.y + 10
         for text_surf in text_surfaces:
             text_rect = text_surf.get_rect(centerx=bg_rect.centerx, y=current_y)
             screen.blit(text_surf, text_rect)
-            current_y += text_surf.get_height() + 5
+            current_y += text_surf.get_height() + 3
+
+class NotificationManager:
+    def __init__(self, max_notifications=3):
+        self.notifications = deque()
+        self.max_notifications = max_notifications
+        self.notification_height = 80
+        self.spacing = 10
+
+    def add(self, text, duration=3.0):
+        self.notifications.append(Notification(text, duration))
+        if len(self.notifications) > self.max_notifications:
+            self.notifications.popleft()
+
+    def update(self):
+        self.notifications = [n for n in self.notifications if n.update()]
+
+    def draw(self, screen, screen_width):
+        y_offset = 80
+        for i, notification in enumerate(self.notifications):
+            notification.draw(screen, screen_width, y_offset + i * (self.notification_height + self.spacing))
+
+    def clear(self):
+        self.notifications.clear()
 
 class ControllableBackground:
     def __init__(self, image):
@@ -173,6 +201,10 @@ class ControllableBackground:
 
         knopka_start = pygame.Rect(tekushaya_shirina // 2 - 50, tekushaya_vysota - 150, 100, 50)
         if knopka_start.collidepoint(pos):
+            return True
+
+        knopka_menu = pygame.Rect(tekushaya_shirina - 110, 22, 100, 36)
+        if knopka_menu.collidepoint(pos):
             return True
 
         knopka_shirina, knopka_vysota = 100, 50
@@ -235,7 +267,7 @@ class PolzunokSkorosti:
         self.pryamougolnik = pygame.Rect(x, y, width, height)
         self.max_skorost = 1000
         self.min_skorost = 0
-        self.skorost = 500
+        self.skorost = 440
         self.ruchka_x = x + (self.skorost / self.max_skorost) * width
         self.ruchka_shirina = 20
         self.ruchka_vysota = height + 10
@@ -277,12 +309,17 @@ class PolzunokSkorosti:
         screen.blit(skorost_text, text_rect)
 
     def poluchit_koefficient_skorosti(self):
-        return 0.5 + (self.skorost / 1000.0)
+        return 0.1 + (self.skorost / 1000.0) * 0.9
 
 def zagruzit_i_sdelat_kruglym(path, size):
-    image = pygame.image.load(path).convert_alpha()
-    image = pygame.transform.scale(image, (size, size))
-    return make_circular_surface(image)
+    try:
+        image = pygame.image.load(path).convert_alpha()
+        image = pygame.transform.scale(image, (size, size))
+        return make_circular_surface(image)
+    except:
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        surface.fill((100, 100, 100))
+        return make_circular_surface(surface)
 
 koficzienty_razmera_zvezd = {
     "Sverhgiant": 1.4,
@@ -293,19 +330,35 @@ koficzienty_razmera_zvezd = {
 imena_zvezd = set(koficzienty_razmera_zvezd.keys())
 
 nebesnye_obekty = {
-    "zheleznaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Железная планета.png', 120), "base_size": 120, "positions": [], "name_ru": "Железная планета"},
-    "gazovaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Газовая планета.png', 180), "base_size": 180, "positions": [], "name_ru": "Газовая планета"},
-    "ledyanaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Ледяная планета.png', 140), "base_size": 140, "positions": [], "name_ru": "Ледяная планета"},
+    "zheleznaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Железная планета.png', 120), "base_size": 120, "positions": [], "name_ru": "Железная планета", "description": "Планета с высоким содержанием железа. Очень плотная, имеет сильное магнитное поле. Масса измеряется в массах Земли."},
+    "gazovaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Газовая планета.png', 180), "base_size": 180, "positions": [], "name_ru": "Газовая планета", "description": "Состоит в основном из водорода и гелия. Имеет низкую плотность, но огромные размеры. Масса измеряется в массах Земли."},
+    "ledyanaya_planeta": {"image": zagruzit_i_sdelat_kruglym('Ледяная планета.png', 140), "base_size": 140, "positions": [], "name_ru": "Ледяная планета", "description": "Планета, покрытая льдом и замерзшими газами. Обитаема для некоторых форм жизни. Масса измеряется в массах Земли."},
     "Sverhgiant": {"image": zagruzit_i_sdelat_kruglym('Сверхгигант.png', int(solnce_original_razmer * koficzienty_razmera_zvezd["Sverhgiant"] * 0.7)),
-               "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Sverhgiant"] * 0.7), "positions": [], "name_ru": "Сверхгигант"},
+               "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Sverhgiant"] * 0.7), "positions": [], "name_ru": "Сверхгигант", "description": "Огромная звезда, в десятки раз больше Солнца. Живет всего несколько миллионов лет. Масса измеряется в массах Солнца."},
     "Gigant": {"image": zagruzit_i_sdelat_kruglym('Гигант.png', int(solnce_original_razmer * koficzienty_razmera_zvezd["Gigant"] * 0.7)),
-                "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Gigant"] * 0.7), "positions": [], "name_ru": "Гигант"},
+                "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Gigant"] * 0.7), "positions": [], "name_ru": "Гигант", "description": "Звезда, которая расширилась после выгорания водорода в ядре. Масса измеряется в массах Солнца."},
     "Belyy_karlik": {"image": zagruzit_i_sdelat_kruglym('Белый карлик.png', int(solnce_original_razmer * koficzienty_razmera_zvezd["Belyy_karlik"] * 0.7)),
-                 "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Belyy_karlik"] * 0.7), "positions": [], "name_ru": "Белый карлик"},
-    "Metallicheskii": {"image": zagruzit_i_sdelat_kruglym('Металлический.png', 140), "base_size": 140, "positions": [], "name_ru": "Металлический астероид"},
-    "Siikatnii": {"image": zagruzit_i_sdelat_kruglym('Силикатный.png', 140), "base_size": 140, "positions": [], "name_ru": "Силикатный астероид"},
-    "Uglerodnii": {"image": zagruzit_i_sdelat_kruglym('Углеродный.png', 140), "base_size": 140, "positions": [], "name_ru": "Углеродный астероид"},
+                 "base_size": int(solnce_original_razmer * koficzienty_razmera_zvezd["Belyy_karlik"] * 0.7), "positions": [], "name_ru": "Белый карлик", "description": "Остывшая звезда размером с Землю, но массой как Солнце. Очень плотная. Масса измеряется в массах Солнца."},
+    "Metallicheskii": {"image": zagruzit_i_sdelat_kruglym('Металлический.png', 140), "base_size": 140, "positions": [], "name_ru": "Металлический астероид", "description": "Астероид, состоящий в основном из металлов (железа, никеля). Масса измеряется в массах Земли."},
+    "Siikatnii": {"image": zagruzit_i_sdelat_kruglym('Силикатный.png', 140), "base_size": 140, "positions": [], "name_ru": "Силикатный астероид", "description": "Каменный астероид, состоящий из силикатов. Самый распространенный тип. Масса измеряется в массах Земли."},
+    "Uglerodnii": {"image": zagruzit_i_sdelat_kruglym('Углеродный.png', 140), "base_size": 140, "positions": [], "name_ru": "Углеродный астероид", "description": "Астероид, богатый углеродом и органическими соединениями. Масса измеряется в массах Земли."},
 }
+
+class SunObject:
+    def __init__(self):
+        self.pos = [WIDTH//2, HEIGHT//2]
+        self.mass = 5000
+        self.radius = 50
+        self.vx = 0
+        self.vy = 0
+        self.image = None
+        self.name_ru = "Солнце"
+        self.yavlyaetsya_zvezdoy = True
+        self.is_alive = True
+        self.original_pos = [WIDTH//2, HEIGHT//2]
+        self.saved_pos = [WIDTH//2, HEIGHT//2]
+
+sun = SunObject()
 
 vybrannyy_obekt = None
 tekushchee_menu = "main"
@@ -320,18 +373,18 @@ ozhidaemaya_massa = None
 
 REZHIM_SBORKI = "sbor"
 REZHIM_SIMULYATSII = "sim"
-tekushchiy_rezhim = REZHIM_SBORKI
+REZHIM_MENU = "menu"
+tekushchiy_rezhim = REZHIM_MENU
 
 knopka_start = pygame.Rect(WIDTH // 2 - 50, HEIGHT - 150, 100, 50)
 knopka_start_cvet = (0, 200, 0)
 knopka_start_navedenie_cvet = (0, 255, 0)
 
 vremennye_obekty = {}
+notification_manager = NotificationManager(max_notifications=3)
 
-notifications = []
-
-def add_notification(text):
-    notifications.append(Notification(text))
+def add_notification(text, duration=3.0):
+    notification_manager.add(text, duration)
     print(f"Уведомление: {text}")
 
 def sozdat_vremennye_obekty():
@@ -342,13 +395,14 @@ def sozdat_vremennye_obekty():
             "image": dannye["image"],
             "base_size": dannye["base_size"],
             "positions": [],
-            "name_ru": dannye.get("name_ru", imya)
+            "name_ru": dannye.get("name_ru", imya),
+            "description": dannye.get("description", "")
         }
 
 sozdat_vremennye_obekty()
 
 def zapustit_simulyatsiyu():
-    global tekushchiy_rezhim, nebesnye_obekty, vremennye_obekty
+    global tekushchiy_rezhim, nebesnye_obekty, vremennye_obekty, sun
 
     for imya in nebesnye_obekty:
         nebesnye_obekty[imya]["positions"] = []
@@ -358,11 +412,15 @@ def zapustit_simulyatsiyu():
             novyy_obekt = pozitsiya.copy()
             nebesnye_obekty[imya]["positions"].append(novyy_obekt)
 
+    if sun.is_alive:
+        sun.saved_pos = sun.pos.copy()
+
+    sun.fixed = False
     tekushchiy_rezhim = REZHIM_SIMULYATSII
-    add_notification("Симуляция запущена! Начинается гравитационное взаимодействие.")
+    add_notification("Симуляция запущена!", 2.0)
 
 def vernutsya_v_sborku():
-    global tekushchiy_rezhim, vremennye_obekty
+    global tekushchiy_rezhim, vremennye_obekty, sun
 
     for imya in vremennye_obekty:
         vremennye_obekty[imya]["positions"] = []
@@ -371,11 +429,42 @@ def vernutsya_v_sborku():
         for pozitsiya in dannye["positions"]:
             vremennye_obekty[imya]["positions"].append(pozitsiya.copy())
 
+    if sun.is_alive:
+        sun.vx = 0
+        sun.vy = 0
+        sun.fixed = False
+        sun.saved_pos = sun.pos.copy()
+        add_notification("Режим сборки активирован. Солнце осталось на своей позиции.", 2.0)
+    else:
+        add_notification("Режим сборки активирован, но Солнце мертво.", 2.0)
+
     tekushchiy_rezhim = REZHIM_SBORKI
-    add_notification("Режим сборки активирован. Вы можете редактировать систему.")
+
+def vernutsya_v_glavnoe_menu():
+    global tekushchiy_rezhim, vremennye_obekty, sun, ozhidaemyy_obekt, ozhidaemaya_massa, rezhim_vvoda
+
+    for imya in vremennye_obekty:
+        vremennye_obekty[imya]["positions"] = []
+
+    sun.is_alive = True
+    sun.pos = sun.original_pos.copy()
+    sun.saved_pos = sun.original_pos.copy()
+    sun.vx = 0
+    sun.vy = 0
+    sun.mass = 5000
+
+    ozhidaemyy_obekt = None
+    ozhidaemaya_massa = None
+    rezhim_vvoda = 0
+
+    tekushchiy_rezhim = REZHIM_MENU
+    notification_manager.clear()
+    add_notification("Возврат в главное меню", 2.0)
 
 def vybrat_obekt(imya_obekta):
     global rezhim_vvoda, ozhidaemyy_obekt, tekushchiy_zapros, vvedennyy_text
+    if not sun.is_alive and tekushchiy_rezhim == REZHIM_SBORKI:
+        add_notification("Солнце мертво! Вы можете размещать объекты, но гравитации не будет до запуска симуляции.", 2.0)
     ozhidaemyy_obekt = imya_obekta
     rezhim_vvoda = 1
     vvedennyy_text = ""
@@ -441,56 +530,20 @@ def obrabotat_nazhatie_menu(pos):
     if tekushchee_menu != "main":
         tekushchee_menu = "main"
 
-def nayti_blizhayshie_zvezdy(poziciya, radius_poiska=500):
-    blizhayshie_zvezdy = []
-
-    centr_solnca = (sun_world_pos[0], sun_world_pos[1])
-    dx = poziciya[0] - centr_solnca[0]
-    dy = poziciya[1] - centr_solnca[1]
-    rasstoyanie = math.sqrt(dx*dx + dy*dy)
-
-    if rasstoyanie < radius_poiska:
-        blizhayshie_zvezdy.append({
-            "mass": 5000,
-            "pos": centr_solnca,
-            "rasstoyanie": rasstoyanie
-        })
-
-    if tekushchiy_rezhim == REZHIM_SBORKI:
-        obekty = vremennye_obekty
-    else:
-        obekty = nebesnye_obekty
-
-    for imya_obekta, dannye_obekta in obekty.items():
-        if imya_obekta in imena_zvezd:
-            for zvezda in dannye_obekta["positions"]:
-                dx = poziciya[0] - zvezda["pos"][0]
-                dy = poziciya[1] - zvezda["pos"][1]
-                rasstoyanie = math.sqrt(dx*dx + dy*dy)
-
-                if rasstoyanie < radius_poiska:
-                    blizhayshie_zvezdy.append({
-                        "mass": zvezda["mass"],
-                        "pos": (zvezda["pos"][0], zvezda["pos"][1]),
-                        "rasstoyanie": rasstoyanie,
-                        "zvezda": zvezda
-                    })
-
-    return blizhayshie_zvezdy
-
 def proverit_kolliziyu_s_obektami(pos, novyy_radius):
     if tekushchiy_rezhim == REZHIM_SBORKI:
         obekty = vremennye_obekty
     else:
         obekty = nebesnye_obekty
 
-    dx = pos[0] - sun_world_pos[0]
-    dy = pos[1] - sun_world_pos[1]
-    rasstoyanie_do_solnca = math.sqrt(dx*dx + dy*dy)
-    solnechnyy_radius = 50
+    if sun.is_alive:
+        dx = pos[0] - sun.pos[0]
+        dy = pos[1] - sun.pos[1]
+        rasstoyanie_do_solnca = math.sqrt(dx*dx + dy*dy)
+        solnechnyy_radius = sun.radius
 
-    if rasstoyanie_do_solnca < (novyy_radius + solnechnyy_radius):
-        return False, "Солнце"
+        if rasstoyanie_do_solnca < (novyy_radius + solnechnyy_radius):
+            return False, "Солнце"
 
     for imya_obekta, dannye_obekta in obekty.items():
         for razmeshchennyy_obekt in dannye_obekta["positions"]:
@@ -503,6 +556,52 @@ def proverit_kolliziyu_s_obektami(pos, novyy_radius):
                 return False, dannye_obekta.get("name_ru", imya_obekta)
 
     return True, None
+
+def vychislit_orbitalnuyu_skorost(massa_centra, rasstoyanie):
+    G_grav = 200
+    return math.sqrt(G_grav * massa_centra / rasstoyanie)
+
+def nayti_dominiruyuschiy_gravitacionnyy_centr(poziciya):
+    if tekushchiy_rezhim == REZHIM_SBORKI:
+        obekty = vremennye_obekty
+    else:
+        obekty = nebesnye_obekty
+
+    vse_zvezdy = []
+
+    if sun.is_alive:
+        vse_zvezdy.append({
+            "mass": sun.mass,
+            "pos": (sun.pos[0], sun.pos[1]),
+            "name_ru": "Солнце"
+        })
+
+    for imya_obekta, dannye_obekta in obekty.items():
+        if imya_obekta in imena_zvezd:
+            for zvezda in dannye_obekta["positions"]:
+                vse_zvezdy.append({
+                    "mass": zvezda["mass"],
+                    "pos": (zvezda["pos"][0], zvezda["pos"][1]),
+                    "name_ru": dannye_obekta.get("name_ru", imya_obekta)
+                })
+
+    if not vse_zvezdy:
+        return None
+
+    max_vliyanie = 0
+    dominant_center = vse_zvezdy[0]
+
+    for zvezda in vse_zvezdy:
+        dx = poziciya[0] - zvezda["pos"][0]
+        dy = poziciya[1] - zvezda["pos"][1]
+        r2 = dx*dx + dy*dy
+        if r2 > 0:
+            vliyanie = zvezda["mass"] / r2
+            if vliyanie > max_vliyanie:
+                max_vliyanie = vliyanie
+                dominant_center = zvezda
+
+    return dominant_center
 
 def razmestit_obekt_s_massoy(pos, imya_obekta, massa, rezhim=REZHIM_SBORKI):
     try:
@@ -527,7 +626,7 @@ def razmestit_obekt_s_massoy(pos, imya_obekta, massa, rezhim=REZHIM_SBORKI):
         mozhno_razmestit, imya_kollidiruyuschego = proverit_kolliziyu_s_obektami((world_x, world_y), novyy_radius)
 
         if not mozhno_razmestit:
-            add_notification(f"Невозможно разместить! Слишком близко к {imya_kollidiruyuschego}")
+            add_notification(f"Невозможно разместить! Слишком близко к {imya_kollidiruyuschego}", 2.0)
             return False
 
         originalnoe_izobrazhenie = dannye_obekta["image"]
@@ -544,19 +643,26 @@ def razmestit_obekt_s_massoy(pos, imya_obekta, massa, rezhim=REZHIM_SBORKI):
         else:
             masshtabirovannoe_izobrazhenie = make_circular_surface(masshtabirovannoe_izobrazhenie)
 
-        dx = world_x - sun_world_pos[0]
-        dy = world_y - sun_world_pos[1]
-        distance = math.sqrt(dx*dx + dy*dy)
+        dominant_center = nayti_dominiruyuschiy_gravitacionnyy_centr((world_x, world_y))
 
-        G_grav = 800
-        M_sun = 5000
+        if dominant_center and not yavlyaetsya_zvezdoy:
+            dx = world_x - dominant_center["pos"][0]
+            dy = world_y - dominant_center["pos"][1]
+            distance = math.sqrt(dx*dx + dy*dy)
 
-        orbital_speed = math.sqrt(G_grav * M_sun / distance)
+            if distance > 0:
+                orbital_speed = vychislit_orbitalnuyu_skorost(dominant_center["mass"], distance)
 
-        perp_x = -dy / distance
-        perp_y = dx / distance
+                perp_x = -dy / distance
+                perp_y = dx / distance
+                direction = random.choice([-1, 1])
 
-        direction = random.choice([1])
+                vx = perp_x * orbital_speed * direction
+                vy = perp_y * orbital_speed * direction
+            else:
+                vx, vy = 0, 0
+        else:
+            vx, vy = 0, 0
 
         novyy_obekt = {
             "pos": [world_x, world_y],
@@ -566,8 +672,8 @@ def razmestit_obekt_s_massoy(pos, imya_obekta, massa, rezhim=REZHIM_SBORKI):
             "size_multiplier": mnozhitel_razmera,
             "yavlyaetsya_zvezdoy": yavlyaetsya_zvezdoy,
             "radius": novyy_razmer // 2,
-            "vx": perp_x * orbital_speed * direction,
-            "vy": perp_y * orbital_speed * direction,
+            "vx": vx,
+            "vy": vy,
             "name_ru": dannye_obekta.get("name_ru", imya_obekta),
             "mass_value": znachenie_massy
         }
@@ -575,6 +681,8 @@ def razmestit_obekt_s_massoy(pos, imya_obekta, massa, rezhim=REZHIM_SBORKI):
         if rezhim == REZHIM_SBORKI:
             vremennye_obekty[imya_obekta]["positions"].append(novyy_obekt)
             print(f"Объект {imya_obekta} добавлен на позицию {world_x}, {world_y} с массой {znachenie_massy}")
+            if dominant_center and not yavlyaetsya_zvezdoy:
+                add_notification(f"Объект размещен на орбите вокруг {dominant_center.get('name_ru', 'звезды')}", 2.0)
         else:
             nebesnye_obekty[imya_obekta]["positions"].append(novyy_obekt)
 
@@ -592,14 +700,21 @@ def udalit_obekt_po_pozicii(pos):
     else:
         obekty_dlya_udaleniya = nebesnye_obekty
 
+    if sun.is_alive:
+        sun_screen_x, sun_screen_y = controllable_bg.world_to_screen(sun.pos[0], sun.pos[1])
+        sun_rect = pygame.Rect(sun_screen_x - sun.radius, sun_screen_y - sun.radius, sun.radius*2, sun.radius*2)
+        if sun_rect.collidepoint(pos):
+            add_notification("Солнце нельзя удалить!", 2.0)
+            return False
+
     for imya_obekta, dannye_obekta in obekty_dlya_udaleniya.items():
         for i, razmeshchennyy_obekt in enumerate(dannye_obekta["positions"]):
-            obekt_rect = razmeshchennyy_obekt["image"].get_rect(center=razmeshchennyy_obekt["pos"])
             screen_x, screen_y = controllable_bg.world_to_screen(razmeshchennyy_obekt["pos"][0], razmeshchennyy_obekt["pos"][1])
             obekt_rect_screen = razmeshchennyy_obekt["image"].get_rect(center=(screen_x, screen_y))
             if obekt_rect_screen.collidepoint(pos):
                 dannye_obekta["positions"].pop(i)
                 print(f"Объект {imya_obekta} удален")
+                add_notification(f"{razmeshchennyy_obekt['name_ru']} удален", 1.5)
                 return True
     return False
 
@@ -641,16 +756,26 @@ def masshtabirovat_odin_obekt(obekt, originalnoe_izobrazhenie):
         obekt["image"] = make_circular_surface(masshtabirovannoe_izobrazhenie)
         obekt["radius"] = novyy_razmer // 2
 
-def pereschitat_pozicii_obektov(old_width, old_height, new_width, new_height):
-    pass
-
 def obnovit_fiziku():
     if tekushchiy_rezhim != REZHIM_SIMULYATSII:
         return
 
-    G_grav = 800
+    G_grav = 200
+    SOFR = 100
 
     vse_obekty = []
+
+    if sun.is_alive:
+        vse_obekty.append({
+            "pos": sun.pos,
+            "mass": sun.mass,
+            "radius": sun.radius,
+            "vx": sun.vx,
+            "vy": sun.vy,
+            "is_star": True,
+            "name": "Солнце",
+            "obj": sun
+        })
 
     for imya_obekta, dannye_obekta in nebesnye_obekty.items():
         for i, obekt in enumerate(dannye_obekta["positions"]):
@@ -666,66 +791,64 @@ def obnovit_fiziku():
                 "name": obekt.get("name_ru", imya_obekta)
             })
 
-    centr_solnca = (sun_world_pos[0], sun_world_pos[1])
-    vse_obekty.append({
-        "pos": centr_solnca,
-        "mass": 5000,
-        "radius": 50,
-        "vx": 0,
-        "vy": 0,
-        "is_star": True,
-        "fixed": True,
-        "name": "Солнце"
-    })
-
     dt = clock.get_time() / 1000.0 * polzunok_skorosti.poluchit_koefficient_skorosti()
-    dt = min(dt, 0.05)
+    dt = min(dt, 0.03)
 
-    for i, obj1 in enumerate(vse_obekty):
-        if obj1.get("fixed", False):
-            continue
-
-        ax = 0
-        ay = 0
-
-        for j, obj2 in enumerate(vse_obekty):
-            if i == j:
+    for obj in vse_obekty:
+        ax, ay = 0, 0
+        for other in vse_obekty:
+            if obj is other:
                 continue
 
-            dx = obj2["pos"][0] - obj1["pos"][0]
-            dy = obj2["pos"][1] - obj1["pos"][1]
-            r2 = dx*dx + dy*dy
+            dx = other["pos"][0] - obj["pos"][0]
+            dy = other["pos"][1] - obj["pos"][1]
+            r2 = dx*dx + dy*dy + SOFR
             r = math.sqrt(r2)
 
-            if r < 10:
-                continue
-
-            a = G_grav * obj2["mass"] / r2
+            a = G_grav * other["mass"] / r2
 
             ax += a * (dx / r)
             ay += a * (dy / r)
 
-        obj1["vx"] += ax * dt
-        obj1["vy"] += ay * dt
+        obj["vx"] += ax * dt
+        obj["vy"] += ay * dt
 
     for obj in vse_obekty:
-        if obj.get("fixed", False):
-            continue
+        new_x = obj["pos"][0] + obj["vx"] * dt
+        new_y = obj["pos"][1] + obj["vy"] * dt
 
-        obj["pos"][0] += obj["vx"] * dt
-        obj["pos"][1] += obj["vy"] * dt
+        obj["pos"][0] = new_x
+        obj["pos"][1] = new_y
 
         if "obekt" in obj:
-            obj["obekt"]["pos"][0] = obj["pos"][0]
-            obj["obekt"]["pos"][1] = obj["pos"][1]
+            obj["obekt"]["pos"][0] = new_x
+            obj["obekt"]["pos"][1] = new_y
             obj["obekt"]["vx"] = obj["vx"]
             obj["obekt"]["vy"] = obj["vy"]
+        elif "obj" in obj:
+            obj["obj"].pos[0] = new_x
+            obj["obj"].pos[1] = new_y
+            obj["obj"].vx = obj["vx"]
+            obj["obj"].vy = obj["vy"]
 
 def proverit_stolknoveniya():
+    global sun
     if tekushchiy_rezhim != REZHIM_SIMULYATSII:
         return
 
     vse_obekty = []
+
+    if sun.is_alive:
+        vse_obekty.append({
+            "pos": sun.pos,
+            "radius": sun.radius,
+            "mass": sun.mass,
+            "is_star": True,
+            "name": "Солнце",
+            "vx": sun.vx,
+            "vy": sun.vy,
+            "obj": sun
+        })
 
     for imya_obekta, dannye_obekta in nebesnye_obekty.items():
         for i, obekt in enumerate(dannye_obekta["positions"]):
@@ -741,18 +864,9 @@ def proverit_stolknoveniya():
                 "mass_value": obekt.get("mass_value", obekt["mass"] / 10)
             })
 
-    centr_solnca = (sun_world_pos[0], sun_world_pos[1])
-    vse_obekty.append({
-        "pos": centr_solnca,
-        "radius": 50,
-        "mass": 5000,
-        "is_star": True,
-        "fixed": True,
-        "name": "Солнце",
-        "mass_value": 5000
-    })
-
     udalennye = set()
+    collision_messages = []
+
     for i in range(len(vse_obekty)):
         for j in range(i + 1, len(vse_obekty)):
             if i in udalennye or j in udalennye:
@@ -766,68 +880,91 @@ def proverit_stolknoveniya():
             rasstoyanie = math.sqrt(dx*dx + dy*dy)
 
             if rasstoyanie < (obj1["radius"] + obj2["radius"]):
-                if obj1.get("fixed", False):
-                    if not obj2.get("fixed", False):
-                        prichina = "слишком близко подошла к звезде и была захвачена гравитацией"
-                        if obj1["name"] == "Солнце":
-                            add_notification(f"{obj2['name']} была поглощена {obj1['name']} из-за того, что планета {prichina}")
-                        else:
-                            add_notification(f"{obj2['name']} была поглощена {obj1['name']}")
-                        imya2, index2, dannye2 = obj2["data"]
-                        dannye2["positions"].pop(index2)
-                        udalennye.add(j)
-                elif obj2.get("fixed", False):
-                    if not obj1.get("fixed", False):
-                        prichina = "слишком близко подошел к звезде и был захвачен гравитацией"
-                        if obj2["name"] == "Солнце":
-                            add_notification(f"{obj1['name']} был поглощен {obj2['name']} из-за того, что планета {prichina}")
-                        else:
-                            add_notification(f"{obj1['name']} был поглощен {obj2['name']}")
-                        imya1, index1, dannye1 = obj1["data"]
-                        dannye1["positions"].pop(index1)
-                        udalennye.add(i)
-                elif obj1["is_star"] and not obj2["is_star"]:
-                    prichina = "слишком близко подошла к звезде и была захвачена гравитацией"
-                    add_notification(f"{obj2['name']} была поглощена {obj1['name']} из-за того, что планета {prichina}")
-                    imya2, index2, dannye2 = obj2["data"]
-                    dannye2["positions"].pop(index2)
-                    udalennye.add(j)
-                elif obj2["is_star"] and not obj1["is_star"]:
-                    prichina = "слишком близко подошел к звезде и был захвачен гравитацией"
-                    add_notification(f"{obj1['name']} был поглощен {obj2['name']} из-за того, что планета {prichina}")
-                    imya1, index1, dannye1 = obj1["data"]
-                    dannye1["positions"].pop(index1)
-                    udalennye.add(i)
-                elif obj1["mass"] > obj2["mass"]:
-                    sootnoshenie = obj1["mass"] / obj2["mass"]
-                    if sootnoshenie > 10:
-                        prichina = f"масса {obj1['name']} значительно превышала массу {obj2['name']}"
+                if obj1["is_star"] and obj2["is_star"]:
+                    if obj1["mass"] > obj2["mass"]:
+                        winner, loser = obj1, obj2
+                        winner_idx, loser_idx = i, j
                     else:
-                        prichina = f"более массивный объект ({obj1['name']}) притянул к себе {obj2['name']}"
-                    add_notification(f"{obj2['name']} был поглощен {obj1['name']} из-за того, что {prichina}")
-                    imya2, index2, dannye2 = obj2["data"]
-                    dannye2["positions"].pop(index2)
-                    udalennye.add(j)
-                elif obj2["mass"] > obj1["mass"]:
-                    sootnoshenie = obj2["mass"] / obj1["mass"]
-                    if sootnoshenie > 10:
-                        prichina = f"масса {obj2['name']} значительно превышала массу {obj1['name']}"
-                    else:
-                        prichina = f"более массивный объект ({obj2['name']}) притянул к себе {obj1['name']}"
-                    add_notification(f"{obj1['name']} был поглощен {obj2['name']} из-за того, что {prichina}")
-                    imya1, index1, dannye1 = obj1["data"]
-                    dannye1["positions"].pop(index1)
-                    udalennye.add(i)
+                        winner, loser = obj2, obj1
+                        winner_idx, loser_idx = j, i
+
+                    collision_messages.append(f"Звезда {loser['name']} поглощена звездой {winner['name']}!")
+
+                    if "data" in loser:
+                        imya, index, dannye = loser["data"]
+                        dannye["positions"].pop(index)
+                    udalennye.add(loser_idx)
+
+                    total_mass = winner["mass"] + loser["mass"]
+                    winner["vx"] = (winner["vx"] * winner["mass"] + loser["vx"] * loser["mass"]) / total_mass
+                    winner["vy"] = (winner["vy"] * winner["mass"] + loser["vy"] * loser["mass"]) / total_mass
+                    winner["mass"] = total_mass
+
+                    if "obj" in winner:
+                        winner["obj"].mass = total_mass
+                        winner["obj"].vx = winner["vx"]
+                        winner["obj"].vy = winner["vy"]
+                    elif "obekt" in winner:
+                        winner["obekt"]["mass"] = total_mass
+                        winner["obekt"]["vx"] = winner["vx"]
+                        winner["obekt"]["vy"] = winner["vy"]
+
+                    if loser['name'] == "Солнце":
+                        sun.is_alive = False
+                        sun.saved_pos = sun.pos.copy()
+                        collision_messages.append("Солнце погибло! Теперь гравитацию определяют другие звезды.")
+
+                elif obj1.get("is_star", False) or obj2.get("is_star", False):
+                    star = obj1 if obj1.get("is_star", False) else obj2
+                    planet = obj2 if star is obj1 else obj1
+
+                    collision_messages.append(f"{planet['name']} поглощена звездой {star['name']}")
+
+                    if "data" in planet:
+                        imya, index, dannye = planet["data"]
+                        dannye["positions"].pop(index)
+                    udalennye.add(j if star is obj1 else i)
+
+                    star["mass"] += planet["mass"] * 0.01
+                    if "obj" in star:
+                        star["obj"].mass = star["mass"]
+
                 else:
-                    add_notification(f"{obj1['name']} и {obj2['name']} столкнулись и уничтожили друг друга")
-                    if i not in udalennye:
-                        imya1, index1, dannye1 = obj1["data"]
-                        dannye1["positions"].pop(index1)
-                        udalennye.add(i)
-                    if j not in udalennye:
-                        imya2, index2, dannye2 = obj2["data"]
-                        dannye2["positions"].pop(index2)
+                    if obj1["mass"] > obj2["mass"] * 3:
+                        collision_messages.append(f"{obj2['name']} поглощен {obj1['name']}")
+                        if "data" in obj2:
+                            imya2, index2, dannye2 = obj2["data"]
+                            dannye2["positions"].pop(index2)
                         udalennye.add(j)
+
+                        obj1["mass"] += obj2["mass"] * 0.8
+                        if "obekt" in obj1:
+                            obj1["obekt"]["mass"] = obj1["mass"]
+
+                    elif obj2["mass"] > obj1["mass"] * 3:
+                        collision_messages.append(f"{obj1['name']} поглощен {obj2['name']}")
+                        if "data" in obj1:
+                            imya1, index1, dannye1 = obj1["data"]
+                            dannye1["positions"].pop(index1)
+                        udalennye.add(i)
+
+                        obj2["mass"] += obj1["mass"] * 0.8
+                        if "obekt" in obj2:
+                            obj2["obekt"]["mass"] = obj2["mass"]
+
+                    else:
+                        collision_messages.append(f"{obj1['name']} и {obj2['name']} столкнулись и разрушились")
+                        if i not in udalennye and "data" in obj1:
+                            imya1, index1, dannye1 = obj1["data"]
+                            dannye1["positions"].pop(index1)
+                            udalennye.add(i)
+                        if j not in udalennye and "data" in obj2:
+                            imya2, index2, dannye2 = obj2["data"]
+                            dannye2["positions"].pop(index2)
+                            udalennye.add(j)
+
+    for msg in collision_messages[:3]:
+        add_notification(msg, 2.5)
 
 def narisovat_knopku_start_stop():
     global knopka_start
@@ -859,12 +996,14 @@ def narisovat_indikator_rezhima():
     if tekushchiy_rezhim == REZHIM_SBORKI:
         text = "РЕЖИМ СБОРКИ"
         color = YELLOW
-    else:
+    elif tekushchiy_rezhim == REZHIM_SIMULYATSII:
         text = "РЕЖИМ СИМУЛЯЦИИ"
         color = GREEN
+    else:
+        return
 
     text_surf = font.render(text, True, color)
-    text_rect = text_surf.get_rect(topright=(tekushaya_shirina - 20, 20))
+    text_rect = text_surf.get_rect(topright=(tekushaya_shirina - 130, 20))
 
     bg_rect = text_rect.inflate(20, 10)
     pygame.draw.rect(screen, BLACK, bg_rect, border_radius=5)
@@ -872,10 +1011,149 @@ def narisovat_indikator_rezhima():
 
     screen.blit(text_surf, text_rect)
 
+
+def narisovat_knopku_menu():
+    knopka_menu = pygame.Rect(tekushaya_shirina - 110, 22, 100, 36)
+    color = (100, 100, 200) if knopka_menu.collidepoint(poziciya_myshi) else (50, 50, 150)
+    pygame.draw.rect(screen, color, knopka_menu, border_radius=5)
+    pygame.draw.rect(screen, WHITE, knopka_menu, 2, border_radius=5)
+
+    text_surf = small_font.render("МЕНЮ", True, WHITE)
+    text_rect = text_surf.get_rect(center=knopka_menu.center)
+    screen.blit(text_surf, text_rect)
+
+    return knopka_menu
+
+def show_start_screen():
+    global tekushchiy_rezhim, tekushaya_shirina, tekushaya_vysota, screen
+
+    start_background = pygame.image.load('космос.jpg').convert()
+    start_background = pygame.transform.scale(start_background, (tekushaya_shirina, tekushaya_vysota))
+
+    button_play = pygame.Rect(tekushaya_shirina//2 - 100, tekushaya_vysota//2 - 60, 200, 50)
+    button_help = pygame.Rect(tekushaya_shirina//2 - 100, tekushaya_vysota//2 + 10, 200, 50)
+    button_info = pygame.Rect(tekushaya_shirina//2 - 100, tekushaya_vysota//2 + 80, 200, 50)
+
+    help_text = [
+        "Управление:",
+        "ЛКМ - выбор и размещение объектов",
+        "ПКМ - удаление объекта",
+        "Зажать ЛКМ на фоне - перемещение камеры",
+        "Скролл скорости - ускорение времени",
+        "Кнопки + и - - масштабирование объектов",
+        "СТАРТ - запуск физической симуляции",
+        "СТОП - возврат в режим сборки (Солнце остается на месте)",
+        "МЕНЮ - возврат в главное меню",
+        "",
+        "Совет: Если Солнце погибло, другие звезды станут центрами гравитации!"
+    ]
+
+    info_text = [
+        "Объекты и их особенности:",
+        "",
+        "Железная планета - плотная, сильное магнитное поле",
+        "Газовая планета - низкая плотность, огромные размеры",
+        "Ледяная планета - покрыта льдом, возможна жизнь",
+        "",
+        "Сверхгигант - огромная звезда, короткий срок жизни",
+        "Гигант - расширившаяся звезда",
+        "Белый карлик - очень плотная остывшая звезда",
+        "",
+        "Астероиды: Металлический, Силикатный, Углеродный",
+        "",
+        "Масса планет и астероидов измеряется в массах Земли",
+        "Масса звезд измеряется в массах Солнца"
+    ]
+
+    show_help = False
+    show_info = False
+
+    while True:
+        current_width, current_height = screen.get_size()
+        start_background = pygame.image.load('космос.jpg').convert()
+        start_background = pygame.transform.scale(start_background, (current_width, current_height))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            if event.type == pygame.VIDEORESIZE:
+                tekushaya_shirina, tekushaya_vysota = event.w, event.h
+                screen = pygame.display.set_mode((tekushaya_shirina, tekushaya_vysota), pygame.RESIZABLE)
+                button_play = pygame.Rect(tekushaya_shirina//2 - 100, tekushaya_vysota//2 - 60, 200, 50)
+                button_help = pygame.Rect(tekushaya_shirina//2 - 100, tekushaya_vysota//2 + 10, 200, 50)
+                button_info = pygame.Rect(tekushaya_shirina//2 - 100, tekushaya_vysota//2 + 80, 200, 50)
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if button_play.collidepoint(event.pos):
+                    tekushchiy_rezhim = REZHIM_SBORKI
+                    return True
+                elif button_help.collidepoint(event.pos):
+                    show_help = True
+                    show_info = False
+                elif button_info.collidepoint(event.pos):
+                    show_info = True
+                    show_help = False
+                elif show_help or show_info:
+                    show_help = False
+                    show_info = False
+
+        screen.blit(start_background, (0, 0))
+
+        title = big_font.render("КОСМИЧЕСКИЙ СИМУЛЯТОР", True, YELLOW)
+        title_rect = title.get_rect(center=(tekushaya_shirina//2, tekushaya_vysota//2 - 150))
+        screen.blit(title, title_rect)
+
+        mouse_pos = pygame.mouse.get_pos()
+
+        for button, text in [(button_play, "ИГРАТЬ"), (button_help, "СПРАВКА"), (button_info, "ОПИСАНИЕ")]:
+            color = (100, 100, 200) if button.collidepoint(mouse_pos) else (50, 50, 100)
+            pygame.draw.rect(screen, color, button, border_radius=10)
+            pygame.draw.rect(screen, WHITE, button, 2, border_radius=10)
+            text_surf = font.render(text, True, WHITE)
+            text_rect = text_surf.get_rect(center=button.center)
+            screen.blit(text_surf, text_rect)
+
+        if show_help:
+            help_surface = pygame.Surface((tekushaya_shirina - 200, 450), pygame.SRCALPHA)
+            help_surface.fill((0, 0, 0, 200))
+            pygame.draw.rect(help_surface, WHITE, help_surface.get_rect(), 2, border_radius=10)
+
+            y_offset = 20
+            for line in help_text:
+                text_surf = small_font.render(line, True, YELLOW)
+                help_surface.blit(text_surf, (20, y_offset))
+                y_offset += 30
+
+            screen.blit(help_surface, (100, tekushaya_vysota//2 - 225))
+
+        if show_info:
+            info_surface = pygame.Surface((tekushaya_shirina - 200, 500), pygame.SRCALPHA)
+            info_surface.fill((0, 0, 0, 200))
+            pygame.draw.rect(info_surface, WHITE, info_surface.get_rect(), 2, border_radius=10)
+
+            y_offset = 20
+            for line in info_text:
+                text_surf = small_font.render(line, True, YELLOW)
+                info_surface.blit(text_surf, (20, y_offset))
+                y_offset += 25
+
+            screen.blit(info_surface, (100, tekushaya_vysota//2 - 250))
+
+        esc_text = small_font.render("Нажмите ESC для выхода", True, WHITE)
+        esc_rect = esc_text.get_rect(bottomright=(tekushaya_shirina - 20, tekushaya_vysota - 20))
+        screen.blit(esc_text, esc_rect)
+
+        pygame.display.flip()
+        clock.tick(60)
+
 polzunok_skorosti = PolzunokSkorosti(20, HEIGHT - 80, 200, 20)
 controllable_bg.set_polzunok(polzunok_skorosti)
 
-sun_world_pos = [-controllable_bg.camera_x + WIDTH//2, -controllable_bg.camera_y + HEIGHT//2]
+if not show_start_screen():
+    pygame.quit()
+    exit()
 
 running = True
 while running:
@@ -886,10 +1164,8 @@ while running:
         controllable_bg.handle_event(event)
 
         if event.type == pygame.VIDEORESIZE:
-            staraya_shirina, staraya_vysota = tekushaya_shirina, tekushaya_vysota
             tekushaya_shirina, tekushaya_vysota = event.w, event.h
             screen = pygame.display.set_mode((tekushaya_shirina, tekushaya_vysota), pygame.RESIZABLE)
-
             polzunok_skorosti.pryamougolnik.y = tekushaya_vysota - 80
 
         elif event.type == pygame.KEYDOWN:
@@ -928,7 +1204,15 @@ while running:
             knopka_start.centerx = tekushaya_shirina // 2
             knopka_start.y = tekushaya_vysota - 150
 
+            knopka_menu = pygame.Rect(tekushaya_shirina - 110, 22, 100, 36)
+
             if event.button == 1:
+                if knopka_menu.collidepoint(pos):
+                    vernutsya_v_glavnoe_menu()
+                    if not show_start_screen():
+                        running = False
+                    continue
+
                 if knopka_start.collidepoint(pos):
                     if tekushchiy_rezhim == REZHIM_SBORKI:
                         zapustit_simulyatsiyu()
@@ -1051,11 +1335,17 @@ while running:
         obnovit_fiziku()
         proverit_stolknoveniya()
 
-    frame = masshtabirovannye_kadry[tekushiy_kadr]
-    sun_screen_x, sun_screen_y = controllable_bg.world_to_screen(sun_world_pos[0], sun_world_pos[1])
-    x = sun_screen_x - frame.get_width() // 2
-    y = sun_screen_y - frame.get_height() // 2
-    screen.blit(frame, (x, y))
+    if sun.is_alive:
+        frame = masshtabirovannye_kadry[tekushiy_kadr]
+        sun_screen_x, sun_screen_y = controllable_bg.world_to_screen(sun.pos[0], sun.pos[1])
+        x = sun_screen_x - frame.get_width() // 2
+        y = sun_screen_y - frame.get_height() // 2
+        screen.blit(frame, (x, y))
+    else:
+        sun_screen_x, sun_screen_y = controllable_bg.world_to_screen(sun.pos[0], sun.pos[1])
+        dead_text = font.render ("", True, RED)
+        dead_rect = dead_text.get_rect(center=(sun_screen_x, sun_screen_y))
+        screen.blit(dead_text, dead_rect)
 
     if tekushchiy_rezhim == REZHIM_SBORKI:
         obekty_dlya_otrisovki = vremennye_obekty
@@ -1093,12 +1383,13 @@ while running:
         text_rect = text_surf.get_rect(center=input_rect.center)
         screen.blit(text_surf, text_rect)
 
-    notifications = [n for n in notifications if n.update()]
-    for notification in notifications:
-        notification.draw(screen, tekushaya_shirina)
+    notification_manager.update()
+    notification_manager.draw(screen, tekushaya_shirina)
 
     narisovat_knopku_start_stop()
     polzunok_skorosti.narisovat(screen)
+
+    knopka_menu = narisovat_knopku_menu()
 
     plyus_pryamougolnik = pygame.Rect(tekushaya_shirina // 2 - knopka_shirina - 20, tekushaya_vysota - 80, knopka_shirina, knopka_vysota)
     minus_pryamougolnik = pygame.Rect(tekushaya_shirina // 2 + 20, tekushaya_vysota - 80, knopka_shirina, knopka_vysota)
